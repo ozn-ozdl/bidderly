@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		F2C0C1C42FDD9BDD00241F25 /* ClerkKit in Frameworks */ = {isa = PBXBuildFile; productRef = F2C0C1C22FDD9BDD00241F25 /* ClerkKit */; };
+		F2C0C1C52FDD9BDD00241F25 /* ClerkKitUI in Frameworks */ = {isa = PBXBuildFile; productRef = F2C0C1C32FDD9BDD00241F25 /* ClerkKitUI */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		F20C98C72FDD9BDD00241F25 /* Bidderly.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Bidderly.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +28,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F2C0C1C42FDD9BDD00241F25 /* ClerkKit in Frameworks */,
+				F2C0C1C52FDD9BDD00241F25 /* ClerkKitUI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +72,8 @@
 			);
 			name = Bidderly;
 			packageProductDependencies = (
+				F2C0C1C22FDD9BDD00241F25 /* ClerkKit */,
+				F2C0C1C32FDD9BDD00241F25 /* ClerkKitUI */,
 			);
 			productName = Bidderly;
 			productReference = F20C98C72FDD9BDD00241F25 /* Bidderly.app */;
@@ -94,6 +103,9 @@
 			);
 			mainGroup = F20C98BE2FDD9BDD00241F25;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				F2C0C1C12FDD9BDD00241F25 /* XCRemoteSwiftPackageReference "clerk-ios" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F20C98C82FDD9BDD00241F25 /* Products */;
 			projectDirPath = "";
@@ -259,7 +271,14 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CLERK_PUBLISHABLE_KEY = "";
+				INFOPLIST_KEY_API_BASE_URL = "";
+				INFOPLIST_KEY_API_BEARER_TOKEN = "";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -294,7 +313,14 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CLERK_PUBLISHABLE_KEY = "";
+				INFOPLIST_KEY_API_BASE_URL = "";
+				INFOPLIST_KEY_API_BEARER_TOKEN = "";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -337,6 +363,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		F2C0C1C12FDD9BDD00241F25 /* XCRemoteSwiftPackageReference "clerk-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/clerk/clerk-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		F2C0C1C22FDD9BDD00241F25 /* ClerkKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F2C0C1C12FDD9BDD00241F25 /* XCRemoteSwiftPackageReference "clerk-ios" */;
+			productName = ClerkKit;
+		};
+		F2C0C1C32FDD9BDD00241F25 /* ClerkKitUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F2C0C1C12FDD9BDD00241F25 /* XCRemoteSwiftPackageReference "clerk-ios" */;
+			productName = ClerkKitUI;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = F20C98BF2FDD9BDD00241F25 /* Project object */;
 }
