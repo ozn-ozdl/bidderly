@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import ClerkKit
 
 #if DEBUG
 
@@ -120,38 +121,48 @@ enum PreviewSupport {
 
     /// A RadarClient preloaded with the fixture snapshot — the canvas renders
     /// without ever calling out to the network.
-    @MainActor
-    static func makeRadarClient(
-        stateStore: UserStateStore = UserStateStore(),
+    nonisolated static func makeRadarClient(
+        snapshot: RadarSnapshot? = nil,
+        stateStore: UserStateStore? = nil,
         realtime: RealtimeClient? = nil
     ) -> RadarClient {
-        let client = RadarClient(
-            baseURL: URL(string: "https://example.invalid")!,
-            userState: stateStore,
-            realtime: realtime
-        )
-        client.seedForPreview(snapshot)
-        return client
+        MainActor.assumeIsolated {
+            let store = stateStore ?? UserStateStore()
+            let client = RadarClient(
+                baseURL: URL(string: "https://example.invalid")!,
+                userState: store,
+                realtime: realtime
+            )
+            client.seedForPreview(snapshot ?? Self.snapshot)
+            return client
+        }
     }
 
-    @MainActor
-    static func makeAlarmManager() -> AlarmManager { AlarmManager() }
+    nonisolated static func makeAlarmManager() -> AlarmManager {
+        MainActor.assumeIsolated { AlarmManager() }
+    }
 
-    @MainActor
-    static func makeUserStateStore() -> UserStateStore { UserStateStore() }
+    nonisolated static func makeUserStateStore() -> UserStateStore {
+        MainActor.assumeIsolated { UserStateStore() }
+    }
 
-    @MainActor
-    static func makeRealtimeClient(stateStore: UserStateStore = UserStateStore()) -> RealtimeClient {
-        RealtimeClient(baseURL: URL(string: "wss://example.invalid")!, stateStore: stateStore)
+    nonisolated static func makeRealtimeClient() -> RealtimeClient {
+        MainActor.assumeIsolated {
+            RealtimeClient(
+                baseURL: URL(string: "wss://example.invalid")!,
+                stateStore: UserStateStore()
+            )
+        }
     }
 
     /// Configure the Clerk singleton with the app's publishable key and
     /// return it. In the preview canvas `clerk.user` stays nil, so every
     /// `clerk.user?.…` in the views falls back to its placeholder. The
     /// `UserButton` from ClerkKitUI renders its own signed-out state.
-    @MainActor
-    static func previewClerk() -> Clerk {
-        Clerk.configure(publishableKey: AppConfig.clerkPublishableKey)
+    nonisolated static func previewClerk() -> Clerk {
+        MainActor.assumeIsolated {
+            Clerk.configure(publishableKey: AppConfig.clerkPublishableKey)
+        }
     }
 }
 
@@ -159,7 +170,6 @@ enum PreviewSupport {
 
 /// Apply every environment object the views need, with sensible preview
 /// defaults. Use `.previewEnvironments()` inside `#Preview` blocks.
-@MainActor
 struct PreviewEnvironments: ViewModifier {
     let radar: RadarClient
     let alarm: AlarmManager
@@ -176,14 +186,48 @@ struct PreviewEnvironments: ViewModifier {
 }
 
 extension View {
-    @MainActor
-    func previewEnvironments(
+    nonisolated func previewEnvironments(
         radar: RadarClient = PreviewSupport.makeRadarClient(),
         alarm: AlarmManager = PreviewSupport.makeAlarmManager(),
         realtime: RealtimeClient = PreviewSupport.makeRealtimeClient(),
         userState: UserStateStore = PreviewSupport.makeUserStateStore()
     ) -> some View {
         modifier(PreviewEnvironments(radar: radar, alarm: alarm, realtime: realtime, userState: userState))
+    }
+}
+
+// MARK: - Snapshot variants for previews
+
+extension RadarSnapshot {
+    /// All approvals forced to "approved" so the Dashboard glance renders the
+    /// "Inbox zero" state. Keeps the fixture shape intact.
+    static func inboxZero(_ base: RadarSnapshot) -> RadarSnapshot {
+        RadarSnapshot(
+            scoutRun: base.scoutRun,
+            sources: base.sources,
+            findings: base.findings,
+            extractions: base.extractions,
+            scores: base.scores,
+            geminiAnalyses: base.geminiAnalyses,
+            opportunities: base.opportunities,
+            approvals: base.approvals.map { approval in
+                ApprovalRequest(
+                    id: approval.id,
+                    findingId: approval.findingId,
+                    opportunityId: approval.opportunityId,
+                    title: approval.title,
+                    requester: approval.requester,
+                    blocker: approval.blocker,
+                    requestedAction: approval.requestedAction,
+                    dueAt: approval.dueAt,
+                    status: .approved,
+                    alertEligible: approval.alertEligible
+                )
+            },
+            events: base.events,
+            cascade: base.cascade,
+            integrations: base.integrations
+        )
     }
 }
 

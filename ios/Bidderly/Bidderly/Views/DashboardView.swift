@@ -175,7 +175,6 @@ private struct GlanceHealth: View {
 
     private var lastRunText: String {
         let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withDay, .withMonth, .withShortMonth, .withTime, .withDashSeparatorInDate]
         if let date = formatter.date(from: snapshot.scoutRun.startedAt) {
             return "Last run " + date.formatted(date: .omitted, time: .shortened)
         }
@@ -203,7 +202,7 @@ private struct GlanceHealth: View {
 
 enum NavRoute: Hashable {
     case approvals
-    case oportunidades
+    case opportunity
     case activity
     case finding(String)
 }
@@ -216,39 +215,11 @@ enum NavRoute: Hashable {
 }
 
 #Preview("Dashboard · inbox zero (no pending)") {
-    let stateStore = UserStateStore()
-    let radar = PreviewSupport.makeRadarClient(stateStore: stateStore)
-    let pending = PreviewSupport.snapshot.approvals.filter { $0.status == .pending }
-    let resolved = PreviewSupport.snapshot.approvals.filter { $0.status != .pending }
-    radar.seedForPreview(RadarSnapshot(
-        scoutRun: PreviewSupport.snapshot.scoutRun,
-        sources: PreviewSupport.snapshot.sources,
-        findings: PreviewSupport.snapshot.findings,
-        extractions: PreviewSupport.snapshot.extractions,
-        scores: PreviewSupport.snapshot.scores,
-        geminiAnalyses: PreviewSupport.snapshot.geminiAnalyses,
-        opportunities: PreviewSupport.snapshot.opportunities,
-        approvals: pending.map { approval in
-            ApprovalRequest(
-                id: approval.id,
-                findingId: approval.findingId,
-                opportunityId: approval.opportunityId,
-                title: approval.title,
-                requester: approval.requester,
-                blocker: approval.blocker,
-                requestedAction: approval.requestedAction,
-                dueAt: approval.dueAt,
-                status: .approved,
-                alertEligible: approval.alertEligible
-            )
-        } + resolved,
-        events: PreviewSupport.snapshot.events,
-        cascade: PreviewSupport.snapshot.cascade,
-        integrations: PreviewSupport.snapshot.integrations
-    ))
-    return DashboardView(onOpenApprovals: {})
+    DashboardView(onOpenApprovals: {})
         .environment(PreviewSupport.previewClerk())
-        .environment(radar)
+        .environment(PreviewSupport.makeRadarClient(
+            snapshot: RadarSnapshot.inboxZero(PreviewSupport.snapshot)
+        ))
         .previewEnvironments()
 }
 #endif

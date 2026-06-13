@@ -139,10 +139,19 @@ private struct DueCountdownRow: View {
 #if DEBUG
 #Preview("AlarmSheet · pending approval") {
     let approval = PreviewSupport.snapshot.approvals.first { $0.status == .pending }!
-    return ZStack {
+    let alarm = Alarm(
+        id: approval.id,
+        kind: .approvalRequired,
+        title: approval.title,
+        detail: approval.requestedAction,
+        dueAt: ISO8601DateFormatter().date(from: approval.dueAt),
+        findingId: approval.findingId,
+        findingTitle: PreviewSupport.snapshot.findings.first { $0.id == approval.findingId }?.title
+    )
+    ZStack {
         AppTheme.slateBackground.ignoresSafeArea()
         AlarmSheet(
-            alarm: approval,
+            alarm: alarm,
             onApprove: {},
             onNeedsInfo: {},
             onDismiss: {}

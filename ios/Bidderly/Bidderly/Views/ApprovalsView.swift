@@ -155,7 +155,7 @@ struct ApprovalCard: View {
                 icon: "gauge.with.dots.needle.50percent",
                 title: "Gemma 4",
                 detail: bundle.score.map { score in
-                    "Score \(score.worthOutreachScore) · \(score.route.replacingOccurrences(of: "_", with: " "))"
+                    "Score \(score.worthOutreachScore) · \(score.route.rawValue.replacingOccurrences(of: "_", with: " "))"
                 } ?? "No score"
             )
             cascadeRow(
@@ -233,39 +233,7 @@ struct ApprovalCard: View {
 }
 
 // MARK: - Status badge
-
-struct ApprovalStatusBadge: View {
-    let status: ApprovalStatus
-
-    private var label: String {
-        switch status {
-        case .pending: return "Pending"
-        case .approved: return "Approved"
-        case .needsInfo: return "Needs info"
-        }
-    }
-
-    private var tint: Color {
-        switch status {
-        case .pending: return AppTheme.amberAlert
-        case .approved: return AppTheme.success
-        case .needsInfo: return AppTheme.slateMuted
-        }
-    }
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Circle().fill(tint).frame(width: 6, height: 6)
-            Text(label)
-                .font(.caption2.weight(.bold))
-                .textCase(.uppercase)
-                .foregroundStyle(tint)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(tint.opacity(0.12), in: Capsule())
-    }
-}
+// `ApprovalStatusBadge` lives in Views/Components/Pills.swift.
 
 #if DEBUG
 #Preview("Approvals · pending + decided") {

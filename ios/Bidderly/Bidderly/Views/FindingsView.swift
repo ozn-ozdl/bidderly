@@ -42,7 +42,7 @@ struct FindingsView: View {
                     }
                 case .approvals:
                     ApprovalsView()
-                case .opportunities:
+                case .opportunity:
                     OpportunitiesView()
                 case .activity:
                     ActivityView()
