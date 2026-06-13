@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, ChevronRight, Database, Route, Sparkles, X } from "lucide-react";
+import { CheckCircle2, ChevronRight, Database, RotateCcw, Route, Sparkles, X } from "lucide-react";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,8 @@ type ApprovalsViewProps = {
   approvals: ApprovalRequest[];
   approvalStatuses: Record<string, ApprovalRequest["status"]>;
   onApprovalChange: (id: string, status: ApprovalRequest["status"]) => void;
+  onReset: () => void;
+  isResetting: boolean;
   findings: Finding[];
   extractions: Extraction[];
   scores: ModelScore[];
@@ -28,6 +30,8 @@ export function ApprovalsView({
   approvals,
   approvalStatuses,
   onApprovalChange,
+  onReset,
+  isResetting,
   findings,
   extractions,
   scores,
@@ -47,25 +51,37 @@ export function ApprovalsView({
           <SectionLabel size="lg">Decisions</SectionLabel>
           <h2 className="mt-2 font-display text-3xl tracking-display">Approvals & escalations</h2>
         </div>
-        <div className="inline-flex items-center gap-0.5 rounded-[var(--radius-sm)] border border-rule bg-bg-elev p-0.5">
-          {(
-            [
-              { id: "pending", label: "Pending" },
-              { id: "resolved", label: "Resolved" },
-            ] as const
-          ).map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setFilter(t.id)}
-              className={cn(
-                "rounded-[calc(var(--radius-sm)-2px)] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition-colors",
-                filter === t.id ? "bg-ink text-bg" : "text-ink-3 hover:text-ink",
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={onReset}
+            disabled={isResetting || approvals.length === 0}
+            aria-label="Reset all approval requests to pending"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            {isResetting ? "Resetting…" : "Reset approvals"}
+          </Button>
+          <div className="inline-flex items-center gap-0.5 rounded-[var(--radius-sm)] border border-rule bg-bg-elev p-0.5">
+            {(
+              [
+                { id: "pending", label: "Pending" },
+                { id: "resolved", label: "Resolved" },
+              ] as const
+            ).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setFilter(t.id)}
+                className={cn(
+                  "rounded-[calc(var(--radius-sm)-2px)] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition-colors",
+                  filter === t.id ? "bg-ink text-bg" : "text-ink-3 hover:text-ink",
+                )}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

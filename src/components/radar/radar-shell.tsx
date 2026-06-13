@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Show, UserButton } from "@clerk/nextjs";
 import { BellRing, UserRound } from "lucide-react";
 
@@ -82,6 +82,48 @@ export function RadarShell({ initialSnapshot, integrationStatus }: RadarShellPro
     return pendingApprovals.find((approval) => !dismissedFindingIds.has(approval.findingId));
   }, [dismissedFindingIds, pendingApprovals]);
 
+  const runScout = useCallback(async () => {
+    setIsRunning(true);
+    try {
+      const response = await fetch("/api/scout-run", { method: "POST" });
+      const payload = (await response.json()) as { snapshot: RadarSnapshot };
+      setSnapshot(payload.snapshot);
+      setLiveEvents(payload.snapshot.events);
+      setSelectedFindingId(payload.snapshot.findings[0]?.id ?? "");
+    } finally {
+      window.setTimeout(() => setIsRunning(false), 700);
+    }
+  }, []);
+
+  const updateApproval = useCallback(
+    (id: string, status: ApprovalStatus) => {
+      setApprovalStatuses((current) => ({ ...current, [id]: status }));
+      const findingId = snapshot.approvals.find((approval) => approval.id === id)?.findingId ?? id;
+      userActions.setDismissed(findingId, false);
+      userActions.setApproval(findingId, status);
+    },
+    [snapshot.approvals, userActions],
+  );
+
+  const [isResetting, setIsResetting] = useState(false);
+
+  const resetApprovals = useCallback(async () => {
+    if (isResetting) return;
+    setIsResetting(true);
+    try {
+      const response = await fetch("/api/approvals/reset", { method: "POST" });
+      if (!response.ok) throw new Error(`reset failed: ${response.status}`);
+      const payload = (await response.json()) as { snapshot: RadarSnapshot };
+      setSnapshot(payload.snapshot);
+      setApprovalStatuses({});
+      userActions.resetApprovals();
+    } catch (error) {
+      console.error("[radar] reset approvals failed", error);
+    } finally {
+      setIsResetting(false);
+    }
+  }, [isResetting, userActions]);
+
   useEffect(() => {
     const eventSource = new EventSource("/api/events");
 
@@ -125,10 +167,10 @@ export function RadarShell({ initialSnapshot, integrationStatus }: RadarShellPro
           userActions.setDismissed(toastApproval.findingId, true);
         }
       } else if (e.key.toLowerCase() === "a") {
-        const target = pendingApprovals[0];
+        const target = toastApproval ?? pendingApprovals[0];
         if (target) updateApproval(target.id, "approved");
       } else if (e.key.toLowerCase() === "i") {
-        const target = pendingApprovals[0];
+        const target = toastApproval ?? pendingApprovals[0];
         if (target) updateApproval(target.id, "needs_info");
       } else if (e.key.toLowerCase() === "r" && !isRunning) {
         void runScout();
@@ -146,33 +188,22 @@ export function RadarShell({ initialSnapshot, integrationStatus }: RadarShellPro
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [pendingApprovals, snapshot.findings, selectedFindingId, isRunning, toastApproval, userActions]);
+  }, [
+    isRunning,
+    pendingApprovals,
+    runScout,
+    selectedFindingId,
+    snapshot.findings,
+    toastApproval,
+    updateApproval,
+    userActions,
+  ]);
 
   useEffect(() => {
     if (selectedFindingId) {
       userActions.markRead(selectedFindingId);
     }
   }, [selectedFindingId, userActions]);
-
-  async function runScout() {
-    setIsRunning(true);
-    try {
-      const response = await fetch("/api/scout-run", { method: "POST" });
-      const payload = (await response.json()) as { snapshot: RadarSnapshot };
-      setSnapshot(payload.snapshot);
-      setLiveEvents(payload.snapshot.events);
-      setSelectedFindingId(payload.snapshot.findings[0]?.id ?? "");
-    } finally {
-      window.setTimeout(() => setIsRunning(false), 700);
-    }
-  }
-
-  function updateApproval(id: string, status: ApprovalStatus) {
-    setApprovalStatuses((current) => ({ ...current, [id]: status }));
-    const findingId = snapshot.approvals.find((approval) => approval.id === id)?.findingId ?? id;
-    userActions.setDismissed(findingId, false);
-    userActions.setApproval(findingId, status);
-  }
 
   const selectedBundle = useMemo(() => getBundle(snapshot, selectedFindingId), [
     snapshot,
@@ -227,8 +258,10 @@ export function RadarShell({ initialSnapshot, integrationStatus }: RadarShellPro
             {activeView === "approvals" ? (
               <ApprovalsView
                 approvals={snapshot.approvals}
-                approvalStatuses={mergedApprovalStatuses}
+                approvalStatuses={approvalStatuses}
                 onApprovalChange={updateApproval}
+                onReset={resetApprovals}
+                isResetting={isResetting}
                 findings={snapshot.findings}
                 extractions={snapshot.extractions}
                 scores={snapshot.scores}

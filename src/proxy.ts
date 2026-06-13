@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 const isProtectedRoute = createRouteMatcher([
   "/api/scout-run(.*)",
+  "/api/approvals/reset(.*)",
 ]);
 
 const clerkConfigured = Boolean(

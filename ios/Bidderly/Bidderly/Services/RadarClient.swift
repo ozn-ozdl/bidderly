@@ -1,4 +1,5 @@
 import Foundation
+import ClerkKit
 
 /// Live radar API client. Talks to the same Next.js backend the web dashboard uses
 /// (`/api/radar`, `/api/scout-run`). The base URL is configured in `AppConfig`.
@@ -10,19 +11,23 @@ final class RadarClient {
     var isRunningScout = false
     var errorMessage: String?
 
-    /// Locally mutated approval statuses the user has acted on (keyed by approval id).
-    /// Keeps the UI optimistic until the next snapshot refresh.
-    var approvalOverrides: [String: ApprovalStatus] = [:]
-
     /// Events observed in this session, newest first. Seeded from the snapshot.
     var liveEvents: [AgentEvent] = []
 
     private let baseURL: URL
     private let session: URLSession
+    private let userState: UserStateStore?
+    private let realtime: RealtimeClient?
 
-    init(baseURL: URL = AppConfig.apiBaseURL) {
+    init(
+        baseURL: URL = AppConfig.apiBaseURL,
+        userState: UserStateStore? = nil,
+        realtime: RealtimeClient? = nil
+    ) {
         self.baseURL = baseURL
         self.session = URLSession(configuration: .radar)
+        self.userState = userState
+        self.realtime = realtime
     }
 
     // MARK: - Reads
@@ -35,7 +40,7 @@ final class RadarClient {
         do {
             let url = baseURL.appending(path: "api/radar")
             var request = URLRequest(url: url)
-            request.applyAuth()
+            await request.applyAuth()
             let (data, response) = try await session.data(for: request)
             try Self.ensureOK(response)
             let decoded = try Self.decoder.decode(RadarSnapshot.self, from: data)
@@ -55,7 +60,7 @@ final class RadarClient {
         do {
             var request = URLRequest(url: baseURL.appending(path: "api/scout-run"))
             request.httpMethod = "POST"
-            request.applyAuth()
+            await request.applyAuth()
             let (data, response) = try await session.data(for: request)
             try Self.ensureOK(response)
             let result = try Self.decoder.decode(ScoutRunResponse.self, from: data)
@@ -69,14 +74,51 @@ final class RadarClient {
     }
 
     func update(approvalId: String, status: ApprovalStatus) {
-        approvalOverrides[approvalId] = status
+        guard let approval = snapshot?.approvals.first(where: { $0.id == approvalId }) else { return }
+        realtime?.setDismissed(findingId: approval.findingId, dismissed: false)
+        realtime?.setApproval(findingId: approval.findingId, status: status)
+    }
+
+    /// Reset every approval back to `pending` on the server, clear the local
+    /// per-user override store, and refresh the snapshot so the UI reflects
+    /// the reset queue immediately.
+    @discardableResult
+    func resetApprovals() async -> Bool {
+        do {
+            var request = URLRequest(url: baseURL.appending(path: "api/approvals/reset"))
+            request.httpMethod = "POST"
+            await request.applyAuth()
+            let (data, response) = try await session.data(for: request)
+            try Self.ensureOK(response)
+            let payload = try Self.decoder.decode(ResetApprovalsResponse.self, from: data)
+            userState?.clearApprovals()
+            apply(payload.snapshot)
+            errorMessage = nil
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
     }
 
     func pendingApprovals() -> [ApprovalRequest] {
         guard let snapshot else { return [] }
         return snapshot.approvals
-            .filter { (approvalOverrides[$0.id] ?? $0.status) == .pending }
+            .filter { status(for: $0) == .pending }
             .sorted { $0.dueAt < $1.dueAt }
+    }
+
+    func status(for approval: ApprovalRequest) -> ApprovalStatus {
+        userState?.status(for: approval) ?? approval.status
+    }
+
+    func status(forApprovalId id: String) -> ApprovalStatus? {
+        guard let approval = snapshot?.approvals.first(where: { $0.id == id }) else { return nil }
+        return status(for: approval)
+    }
+
+    func hasUserApproval(for approval: ApprovalRequest) -> Bool {
+        userState?.hasApproval(for: approval) ?? false
     }
 
     func bundle(forFinding id: String) -> FindingBundle? {
@@ -95,16 +137,6 @@ final class RadarClient {
     // MARK: - Internals
 
     private func apply(_ next: RadarSnapshot) {
-        var next = next
-        // Preserve user-side approval decisions across refreshes.
-        for index in next.approvals.indices {
-            let approval = next.approvals[index]
-            if let override = approvalOverrides[approval.id] {
-                next.approvals[index].status = override
-            } else {
-                approvalOverrides[approval.id] = approval.status
-            }
-        }
         let nextEvents = next.events
         liveEvents = (liveEvents + nextEvents)
             .deduplicated(by: \.id)
@@ -148,11 +180,16 @@ enum RadarError: LocalizedError {
     }
 }
 
+private struct ResetApprovalsResponse: Decodable {
+    let snapshot: RadarSnapshot
+    let pendingCount: Int
+}
+
 // MARK: - URLRequest helpers
 
 extension URLRequest {
-    mutating func applyAuth() {
-        if let token = AppConfig.bearerToken, !token.isEmpty {
+    mutating func applyAuth() async {
+        if let token = try? await Clerk.shared.auth.getToken(), !token.isEmpty {
             setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
     }

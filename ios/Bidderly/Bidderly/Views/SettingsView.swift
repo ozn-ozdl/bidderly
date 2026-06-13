@@ -5,8 +5,11 @@ import ClerkKitUI
 struct SettingsView: View {
     @Environment(RadarClient.self) private var radar
     @Environment(AlarmManager.self) private var alarm
+    @Environment(RealtimeClient.self) private var realtime
     @Environment(Clerk.self) private var clerk
     @State private var presentProfile = false
+    @State private var confirmReset = false
+    @State private var isResetting = false
 
     var body: some View {
         NavigationStack {
@@ -16,6 +19,7 @@ struct SettingsView: View {
                     cascadeCard
                     apiCard
                     diagnosticsCard
+                    approvalsCard
                     alarmCard
                 }
                 .padding()
@@ -23,7 +27,20 @@ struct SettingsView: View {
             .background(AppTheme.slateBackground)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.large)
+            .alert("Reset all approval requests?", isPresented: $confirmReset) {
+                Button("Cancel", role: .cancel) {}
+                Button("Reset", role: .destructive) { Task { await performReset() } }
+            } message: {
+                Text("Every pending, approved, and needs-info decision returns to pending. The server snapshot is reset too.")
+            }
         }
+    }
+
+    private func performReset() async {
+        guard !isResetting else { return }
+        isResetting = true
+        defer { isResetting = false }
+        _ = await radar.resetApprovals()
     }
 
     private var accountCard: some View {
@@ -90,6 +107,25 @@ struct SettingsView: View {
                     .foregroundStyle(AppTheme.slateMuted)
             }
             HStack {
+                Text("Realtime URL")
+                    .font(.subheadline)
+                Spacer()
+                Text(AppConfig.realtimeBaseURL.absoluteString)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(AppTheme.slateMuted)
+            }
+            HStack {
+                Text("Realtime")
+                    .font(.subheadline)
+                Spacer()
+                Text(realtime.isConnected ? "Connected" : "Disconnected")
+                    .font(.caption.weight(.bold)).monospaced()
+                    .padding(.horizontal, 6).padding(.vertical, 3)
+                    .background((realtime.isConnected ? AppTheme.success : AppTheme.amberAlert).opacity(0.15))
+                    .foregroundStyle(realtime.isConnected ? AppTheme.success : AppTheme.amberAlert)
+                    .clipShape(Capsule())
+            }
+            HStack {
                 Text("Mode")
                     .font(.subheadline)
                 Spacer()
@@ -100,10 +136,6 @@ struct SettingsView: View {
                     .foregroundStyle(AppTheme.deepTeal)
                     .clipShape(Capsule())
             }
-            Toggle(isOn: Binding(get: { AppConfig.bearerToken != nil }, set: { _ in })) {
-                Text("Bearer token").font(.subheadline)
-            }
-            .disabled(true)
         }
         .cardStyle()
     }
@@ -133,6 +165,42 @@ struct SettingsView: View {
                 .font(.caption)
                 .foregroundStyle(AppTheme.slateMuted)
         }
+    }
+
+    private var approvalsCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Approval queue", systemImage: "checkmark.seal")
+                .font(.subheadline.weight(.semibold))
+            HStack(spacing: 12) {
+                Image(systemName: "arrow.counterclockwise.circle")
+                    .font(.title2)
+                    .foregroundStyle(AppTheme.deepTeal)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Reset approval requests")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.slateInk)
+                    Text("Sends every decision back to pending on the server and on this device.")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.slateMuted)
+                }
+                Spacer()
+            }
+            Button {
+                confirmReset = true
+            } label: {
+                HStack {
+                    if isResetting { ProgressView().tint(.white) }
+                    Text(isResetting ? "Resetting…" : "Reset approvals")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+            }
+            .background(isResetting ? AppTheme.slateMuted : AppTheme.deepTeal, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .foregroundStyle(.white)
+            .disabled(isResetting)
+        }
+        .cardStyle()
     }
 
     private var alarmCard: some View {
