@@ -2,9 +2,6 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 const isProtectedRoute = createRouteMatcher([
-  "/",
-  "/api/events(.*)",
-  "/api/radar(.*)",
   "/api/scout-run(.*)",
 ]);
 
@@ -25,6 +22,7 @@ export default clerkConfigured
 export const config = {
   matcher: [
     "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
-    "/(api)(.*)",
+    "/(api|trpc)(.*)",
+    "/__clerk/:path*",
   ],
 };

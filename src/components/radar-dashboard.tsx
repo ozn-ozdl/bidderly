@@ -1,5 +1,6 @@
 "use client";
 
+import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
 import {
   Activity,
   AlertTriangle,
@@ -228,22 +229,12 @@ export function RadarDashboard({
                     </span>
                   ) : null}
                 </button>
-                <button
-                  className="hidden h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 sm:flex"
-                  type="button"
-                >
-                  <UserRound size={16} />
-                  {integrationStatus.clerk ? "Clerk session" : "demo@bidderly.win"}
-                </button>
-                <button
-                  className="flex h-10 items-center gap-2 rounded-lg bg-slate-950 px-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-                  disabled={isRunning}
-                  type="button"
-                  onClick={runScout}
-                >
-                  <Play size={15} />
-                  {isRunning ? "Running" : "Run scout"}
-                </button>
+                <AuthControls clerkConfigured={integrationStatus.clerk} />
+                <ScoutRunControl
+                  clerkConfigured={integrationStatus.clerk}
+                  isRunning={isRunning}
+                  onRun={runScout}
+                />
               </div>
             </div>
           </header>
@@ -291,6 +282,99 @@ export function RadarDashboard({
         />
       ) : null}
     </div>
+  );
+}
+
+function AuthControls({ clerkConfigured }: { clerkConfigured: boolean }) {
+  if (!clerkConfigured) {
+    return (
+      <button
+        className="hidden h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 sm:flex"
+        type="button"
+      >
+        <UserRound size={16} />
+        demo@bidderly.win
+      </button>
+    );
+  }
+
+  return (
+    <div className="hidden items-center gap-2 sm:flex">
+      <Show when="signed-out">
+        <SignInButton mode="modal">
+          <button
+            className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            type="button"
+          >
+            Sign in
+          </button>
+        </SignInButton>
+        <SignUpButton mode="modal">
+          <button
+            className="h-10 rounded-lg bg-teal-700 px-3 text-sm font-semibold text-white hover:bg-teal-800"
+            type="button"
+          >
+            Sign up
+          </button>
+        </SignUpButton>
+      </Show>
+      <Show when="signed-in">
+        <div className="flex h-10 items-center rounded-lg border border-slate-200 bg-white px-2">
+          <UserButton />
+        </div>
+      </Show>
+    </div>
+  );
+}
+
+function ScoutRunControl({
+  clerkConfigured,
+  isRunning,
+  onRun,
+}: {
+  clerkConfigured: boolean;
+  isRunning: boolean;
+  onRun: () => void;
+}) {
+  const buttonClass =
+    "flex h-10 items-center gap-2 rounded-lg bg-slate-950 px-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400";
+
+  if (!clerkConfigured) {
+    return (
+      <button
+        className={buttonClass}
+        disabled={isRunning}
+        type="button"
+        onClick={onRun}
+      >
+        <Play size={15} />
+        {isRunning ? "Running" : "Run scout"}
+      </button>
+    );
+  }
+
+  return (
+    <>
+      <Show when="signed-in">
+        <button
+          className={buttonClass}
+          disabled={isRunning}
+          type="button"
+          onClick={onRun}
+        >
+          <Play size={15} />
+          {isRunning ? "Running" : "Run scout"}
+        </button>
+      </Show>
+      <Show when="signed-out">
+        <SignInButton mode="modal">
+          <button className={buttonClass} type="button">
+            <LockKeyhole size={15} />
+            Sign in to run
+          </button>
+        </SignInButton>
+      </Show>
+    </>
   );
 }
 
