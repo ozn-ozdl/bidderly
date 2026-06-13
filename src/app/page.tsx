@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { BrandMark } from "@/components/ui/brand";
 import { ThemeSwitcher } from "@/components/ui/site-theme";
+import { LandingAuthControls } from "@/components/ui/landing-auth-controls";
+import { isClerkConfigured } from "@/lib/env";
 import { defaultTheme } from "@/lib/theme";
 import { LandingHero } from "@/components/landing/hero";
 import { LandingCascade } from "@/components/landing/cascade";
@@ -12,9 +14,10 @@ import { LandingCta } from "@/components/landing/cta";
 import { LandingFooter } from "@/components/landing/footer";
 
 export default function HomePage() {
+  const clerkConfigured = isClerkConfigured();
   return (
     <div className="relative min-h-screen bg-bg text-ink">
-      <SiteHeader />
+      <SiteHeader clerkConfigured={clerkConfigured} />
       <main className="relative">
         <LandingHero />
         <LandingCascade />
@@ -29,7 +32,7 @@ export default function HomePage() {
   );
 }
 
-function SiteHeader() {
+function SiteHeader({ clerkConfigured }: { clerkConfigured: boolean }) {
   return (
     <header className="sticky top-0 z-30 border-b border-rule bg-bg/80 backdrop-blur supports-[backdrop-filter]:bg-bg/65">
       <div className="mx-auto flex h-14 max-w-[1320px] items-center gap-6 px-5 sm:px-8">
@@ -54,6 +57,10 @@ function SiteHeader() {
 
         <div className="ml-auto flex items-center gap-2">
           <ThemeSwitcher current={defaultTheme} className="hidden sm:inline-flex" />
+          <LandingAuthControls
+            configured={clerkConfigured}
+            className="hidden items-center gap-2 sm:flex"
+          />
           <Link
             href="/direction-preview"
             className="hidden text-[12px] text-ink-3 hover:text-ink sm:inline"
