@@ -29,7 +29,12 @@ async function query<T extends QueryResultRow>(text: string, values: unknown[] =
     return null;
   }
 
-  return db.query<T>(text, values);
+  try {
+    return await db.query<T>(text, values);
+  } catch (error) {
+    console.warn("[db] query failed; falling back to fixture data", error);
+    return null;
+  }
 }
 
 export async function ensureSnapshotTable() {
@@ -57,7 +62,7 @@ export async function saveRadarSnapshot(
   }
 
   await ensureSnapshotTable();
-  await query(
+  const result = await query(
     `
       insert into radar_snapshots (id, source, snapshot)
       values ($1, $2, $3::jsonb)
@@ -69,7 +74,7 @@ export async function saveRadarSnapshot(
     ["latest", source, JSON.stringify(snapshot)],
   );
 
-  return true;
+  return Boolean(result);
 }
 
 export async function getLatestRadarSnapshot() {
@@ -84,4 +89,47 @@ export async function getLatestRadarSnapshot() {
   );
 
   return result?.rows[0]?.snapshot ?? null;
+}
+
+/**
+ * Drop the per-user approval decisions and "dismissed" markers so the user is
+ * re-prompted on the next realtime snapshot. Safe to call when the user has
+ * never written any rows — the DELETE just affects 0 rows.
+ */
+export async function clearUserApprovalState(userId: string) {
+  if (!process.env.DATABASE_URL || !userId) {
+    return false;
+  }
+
+  await ensureUserStateTable();
+  const approvals = await query("delete from user_approvals where user_id = $1", [userId]);
+  const dismissals = await query("delete from user_dismissals where user_id = $1", [userId]);
+  return Boolean(approvals || dismissals);
+}
+
+let userStateEnsured = false;
+async function ensureUserStateTable() {
+  if (userStateEnsured || process.env.DB_AUTO_INIT === "false") {
+    return;
+  }
+
+  await query(`
+    create table if not exists user_approvals (
+      user_id text not null,
+      finding_id text not null,
+      status text not null check (status in ('pending','approved','needs_info')),
+      note text,
+      updated_at timestamptz not null default now(),
+      primary key (user_id, finding_id)
+    );
+  `);
+  await query(`
+    create table if not exists user_dismissals (
+      user_id text not null,
+      finding_id text not null,
+      dismissed_at timestamptz not null default now(),
+      primary key (user_id, finding_id)
+    );
+  `);
+  userStateEnsured = true;
 }

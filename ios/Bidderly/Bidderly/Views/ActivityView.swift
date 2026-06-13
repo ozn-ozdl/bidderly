@@ -87,3 +87,10 @@ struct ActivityRow: View {
         .padding(.leading, 4)
     }
 }
+
+#if DEBUG
+#Preview("Activity · live feed") {
+    ActivityView()
+        .previewEnvironments()
+}
+#endif

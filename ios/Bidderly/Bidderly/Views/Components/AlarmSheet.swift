@@ -135,3 +135,19 @@ private struct DueCountdownRow: View {
         return "<1m"
     }
 }
+
+#if DEBUG
+#Preview("AlarmSheet · pending approval") {
+    let approval = PreviewSupport.snapshot.approvals.first { $0.status == .pending }!
+    return ZStack {
+        AppTheme.slateBackground.ignoresSafeArea()
+        AlarmSheet(
+            alarm: approval,
+            onApprove: {},
+            onNeedsInfo: {},
+            onDismiss: {}
+        )
+    }
+    .previewEnvironments()
+}
+#endif

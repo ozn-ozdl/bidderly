@@ -3,6 +3,8 @@ import ClerkKit
 
 struct DashboardView: View {
     @Environment(RadarClient.self) private var radar
+    @Environment(UserStateStore.self) private var userState
+    @Environment(RealtimeClient.self) private var realtime
     @Environment(Clerk.self) private var clerk
 
     var body: some View {
@@ -141,8 +143,15 @@ struct DashboardView: View {
                 }
             }
             ForEach(snapshot.opportunities.prefix(3)) { opportunity in
+                let watched = userState.isWatched(findingId: opportunity.findingId)
                 NavigationLink(value: NavRoute.finding(opportunity.findingId)) {
-                    OpportunityRow(opportunity: opportunity)
+                    OpportunityRow(
+                        opportunity: opportunity,
+                        watched: watched,
+                        onToggleWatch: {
+                            realtime.toggleWatch(findingId: opportunity.findingId, add: !watched)
+                        }
+                    )
                 }
                 .buttonStyle(.plain)
             }
@@ -179,7 +188,15 @@ struct DashboardView: View {
 
 enum NavRoute: Hashable {
     case approvals
-    case opportunities
+    case oportunidades
     case activity
     case finding(String)
 }
+
+#if DEBUG
+#Preview("Dashboard · signed out (fallback identity)") {
+    DashboardView()
+        .environment(PreviewSupport.previewClerk())
+        .previewEnvironments()
+}
+#endif

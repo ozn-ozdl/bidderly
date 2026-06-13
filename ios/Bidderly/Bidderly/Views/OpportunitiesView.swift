@@ -2,6 +2,8 @@ import SwiftUI
 
 struct OpportunitiesView: View {
     @Environment(RadarClient.self) private var radar
+    @Environment(UserStateStore.self) private var userState
+    @Environment(RealtimeClient.self) private var realtime
 
     var body: some View {
         NavigationStack {
@@ -16,8 +18,18 @@ struct OpportunitiesView: View {
                     } else {
                         LazyVStack(spacing: 10) {
                             ForEach(snapshot.opportunities) { opportunity in
+                                let watched = userState.isWatched(findingId: opportunity.findingId)
                                 NavigationLink(value: NavRoute.finding(opportunity.findingId)) {
-                                    OpportunityRow(opportunity: opportunity)
+                                    OpportunityRow(
+                                        opportunity: opportunity,
+                                        watched: watched,
+                                        onToggleWatch: {
+                                            realtime.toggleWatch(
+                                                findingId: opportunity.findingId,
+                                                add: !watched
+                                            )
+                                        }
+                                    )
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -45,6 +57,8 @@ struct OpportunitiesView: View {
 
 struct OpportunityRow: View {
     let opportunity: Opportunity
+    let watched: Bool
+    let onToggleWatch: () -> Void
 
     var statusColor: Color {
         switch opportunity.status {
@@ -66,6 +80,15 @@ struct OpportunityRow: View {
                     Text(opportunity.buyer).font(.caption).foregroundStyle(AppTheme.slateMuted)
                 }
                 Spacer()
+                Button(action: onToggleWatch) {
+                    Image(systemName: watched ? "star.fill" : "star")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(watched ? AppTheme.deepTeal : AppTheme.slateMuted)
+                        .padding(7)
+                        .background(Color.gray.opacity(0.08), in: Circle())
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(watched ? "Remove from watchlist" : "Add to watchlist")
                 Text(opportunity.status.rawValue.replacingOccurrences(of: "_", with: " ").uppercased())
                     .font(.caption2.weight(.bold))
                     .padding(.horizontal, 6).padding(.vertical, 3)
@@ -98,3 +121,10 @@ struct OpportunityRow: View {
         .shadow(color: Color.black.opacity(0.04), radius: 6, y: 2)
     }
 }
+
+#if DEBUG
+#Preview("Opportunities · qualified + blocked") {
+    OpportunitiesView()
+        .previewEnvironments()
+}
+#endif

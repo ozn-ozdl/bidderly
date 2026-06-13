@@ -32,6 +32,12 @@ final class RadarClient {
 
     // MARK: - Reads
 
+    /// Inject a snapshot directly. Intended for SwiftUI previews and tests so
+    /// the canvas can render without hitting the network.
+    func seedForPreview(_ snapshot: RadarSnapshot) {
+        apply(snapshot)
+    }
+
     func refresh() async {
         guard !isRefreshing else { return }
         isRefreshing = true
@@ -92,6 +98,7 @@ final class RadarClient {
             try Self.ensureOK(response)
             let payload = try Self.decoder.decode(ResetApprovalsResponse.self, from: data)
             userState?.clearApprovals()
+            userState?.clearDismissals()
             apply(payload.snapshot)
             errorMessage = nil
             return true

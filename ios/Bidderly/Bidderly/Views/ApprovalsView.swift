@@ -9,7 +9,7 @@ struct ApprovalsView: View {
                 if let snapshot = radar.snapshot {
                     let pending = radar.pendingApprovals()
                     let decided = snapshot.approvals
-                        .filter { radar.approvalOverrides[$0.id] != nil && radar.approvalOverrides[$0.id] != .pending }
+                        .filter { radar.hasUserApproval(for: $0) && radar.status(for: $0) != .pending }
 
                     LazyVStack(spacing: 12) {
                         if pending.isEmpty {
@@ -53,7 +53,7 @@ struct ApprovalCard: View {
     let approval: ApprovalRequest
 
     var status: ApprovalStatus {
-        radar.approvalOverrides[approval.id] ?? approval.status
+        radar.status(for: approval)
     }
 
     var body: some View {
@@ -139,3 +139,10 @@ struct ApprovalRow: View {
         .background(AppTheme.amberAlert.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
+
+#if DEBUG
+#Preview("Approvals · pending + decided") {
+    ApprovalsView()
+        .previewEnvironments()
+}
+#endif

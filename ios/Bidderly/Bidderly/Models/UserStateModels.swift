@@ -111,6 +111,10 @@ final class UserStateStore {
         state.approvals.removeAll()
     }
 
+    func clearDismissals() {
+        state.dismissals.removeAll()
+    }
+
     func isWatched(findingId: String) -> Bool {
         state.watchlist.contains { $0.findingId == findingId }
     }

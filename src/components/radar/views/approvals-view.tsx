@@ -55,7 +55,15 @@ export function ApprovalsView({
           <Button
             size="sm"
             variant="secondary"
-            onClick={onReset}
+            onClick={() => {
+              if (
+                window.confirm(
+                  "Reset all approval requests? Every decision returns to pending, the queue re-prompts, and your decision history is cleared.",
+                )
+              ) {
+                onReset();
+              }
+            }}
             disabled={isResetting || approvals.length === 0}
             aria-label="Reset all approval requests to pending"
           >

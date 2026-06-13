@@ -169,3 +169,10 @@ struct FindingRow: View {
         .shadow(color: Color.black.opacity(0.04), radius: 6, y: 2)
     }
 }
+
+#if DEBUG
+#Preview("Findings · mixed stages") {
+    FindingsView()
+        .previewEnvironments()
+}
+#endif

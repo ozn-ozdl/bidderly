@@ -253,3 +253,11 @@ struct SettingsView: View {
         return (first + last).uppercased().isEmpty ? "B" : (first + last).uppercased()
     }
 }
+
+#if DEBUG
+#Preview("Settings · signed out") {
+    SettingsView()
+        .environment(PreviewSupport.previewClerk())
+        .previewEnvironments()
+}
+#endif
