@@ -10,6 +10,7 @@ import type {
   RadarSnapshot,
 } from "@/lib/radar-types";
 import type { IntegrationStatus } from "@/lib/env";
+import { useUserState } from "@/components/realtime/user-state-provider";
 
 import { RadarSidebar, type SidebarKey } from "./sidebar";
 import { RadarHeaderBar } from "./header-bar";
@@ -36,15 +37,38 @@ export function RadarShell({ initialSnapshot, integrationStatus }: RadarShellPro
   const [isRunning, setIsRunning] = useState(false);
   const [approvalStatuses, setApprovalStatuses] = useState<Record<string, ApprovalStatus>>({});
   const [activeView, setActiveView] = useState<SidebarKey>("radar");
-  const [dismissedToastId, setDismissedToastId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const { state: userState, actions: userActions } = useUserState();
+
+  const approvalIdByFindingId = useMemo(() => {
+    const map = new Map<string, string>();
+    snapshot.approvals.forEach((a) => map.set(a.findingId, a.id));
+    return map;
+  }, [snapshot.approvals]);
+
+  // When realtime state is present, it wins over the optimistic local map so
+  // every signed-in device converges on the same authoritative value.
+  const mergedApprovalStatuses = useMemo(() => {
+    const fromRealtime: Record<string, ApprovalStatus> = {};
+    for (const a of userState.approvals) {
+      fromRealtime[approvalIdByFindingId.get(a.findingId) ?? a.findingId] = a.status;
+    }
+    return { ...approvalStatuses, ...fromRealtime };
+  }, [approvalIdByFindingId, approvalStatuses, userState.approvals]);
+
+  const dismissedFindingIds = useMemo(
+    () => new Set(userState.dismissals.map((item) => item.findingId)),
+    [userState.dismissals],
+  );
 
   const pendingApprovals = useMemo(
     () =>
       snapshot.approvals.filter(
-        (approval) => (approvalStatuses[approval.id] ?? approval.status) === "pending",
+        (approval) =>
+          (mergedApprovalStatuses[approval.id] ?? approval.status) === "pending",
       ),
-    [snapshot.approvals, approvalStatuses],
+    [snapshot.approvals, mergedApprovalStatuses],
   );
 
   const approvalByFinding = useMemo(() => {
@@ -55,11 +79,8 @@ export function RadarShell({ initialSnapshot, integrationStatus }: RadarShellPro
 
   const toastApproval = useMemo(() => {
     if (pendingApprovals.length === 0) return undefined;
-    if (dismissedToastId && pendingApprovals.some((a) => a.id === dismissedToastId)) {
-      return pendingApprovals.find((a) => a.id === dismissedToastId);
-    }
-    return pendingApprovals[0];
-  }, [pendingApprovals, dismissedToastId]);
+    return pendingApprovals.find((approval) => !dismissedFindingIds.has(approval.findingId));
+  }, [dismissedFindingIds, pendingApprovals]);
 
   useEffect(() => {
     const eventSource = new EventSource("/api/events");
@@ -72,9 +93,6 @@ export function RadarShell({ initialSnapshot, integrationStatus }: RadarShellPro
       ]);
       if (agentEvent.findingId) {
         setSelectedFindingId(agentEvent.findingId);
-      }
-      if (agentEvent.type === "approval_requested") {
-        setDismissedToastId(null);
       }
     };
 
@@ -103,7 +121,9 @@ export function RadarShell({ initialSnapshot, integrationStatus }: RadarShellPro
       }
       if (e.key === "Escape") {
         setDrawerOpen(false);
-        setDismissedToastId(null);
+        if (toastApproval) {
+          userActions.setDismissed(toastApproval.findingId, true);
+        }
       } else if (e.key.toLowerCase() === "a") {
         const target = pendingApprovals[0];
         if (target) updateApproval(target.id, "approved");
@@ -126,7 +146,13 @@ export function RadarShell({ initialSnapshot, integrationStatus }: RadarShellPro
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [pendingApprovals, snapshot.findings, selectedFindingId, isRunning]);
+  }, [pendingApprovals, snapshot.findings, selectedFindingId, isRunning, toastApproval, userActions]);
+
+  useEffect(() => {
+    if (selectedFindingId) {
+      userActions.markRead(selectedFindingId);
+    }
+  }, [selectedFindingId, userActions]);
 
   async function runScout() {
     setIsRunning(true);
@@ -143,6 +169,9 @@ export function RadarShell({ initialSnapshot, integrationStatus }: RadarShellPro
 
   function updateApproval(id: string, status: ApprovalStatus) {
     setApprovalStatuses((current) => ({ ...current, [id]: status }));
+    const findingId = snapshot.approvals.find((approval) => approval.id === id)?.findingId ?? id;
+    userActions.setDismissed(findingId, false);
+    userActions.setApproval(findingId, status);
   }
 
   const selectedBundle = useMemo(() => getBundle(snapshot, selectedFindingId), [
@@ -151,15 +180,16 @@ export function RadarShell({ initialSnapshot, integrationStatus }: RadarShellPro
   ]);
 
   return (
-    <div className="min-h-screen bg-bg text-ink">
-      <div className="flex min-h-screen">
+    <div className="h-screen overflow-hidden bg-bg text-ink">
+      <div className="flex h-full">
         <RadarSidebar
           activeView={activeView}
           onView={setActiveView}
           pendingCount={pendingApprovals.length}
+          lastRunId={snapshot.scoutRun.id}
         />
 
-        <main className="min-w-0 flex-1">
+        <main className="min-w-0 flex-1 overflow-y-auto">
           <RadarHeaderBar
             snapshot={snapshot}
             pendingCount={pendingApprovals.length}
@@ -170,7 +200,7 @@ export function RadarShell({ initialSnapshot, integrationStatus }: RadarShellPro
             authSlot={<AuthControls clerkConfigured={integrationStatus.clerk} />}
           />
 
-          <div className="mx-auto w-full max-w-[1480px] space-y-5 px-4 py-5 sm:px-6 lg:px-8">
+          <div className="mx-auto w-full max-w-[1480px] space-y-5 px-4 py-5 pb-20 sm:px-6 lg:px-8 lg:pb-8">
             <RadarMetricStrip snapshot={snapshot} pendingApprovals={pendingApprovals} />
 
             {activeView === "radar" ? (
@@ -181,7 +211,7 @@ export function RadarShell({ initialSnapshot, integrationStatus }: RadarShellPro
                   setSelectedFindingId(id);
                   setDrawerOpen(true);
                 }}
-                approvalStatuses={approvalStatuses}
+                approvalStatuses={mergedApprovalStatuses}
                 onApprovalChange={updateApproval}
               />
             ) : null}
@@ -197,9 +227,12 @@ export function RadarShell({ initialSnapshot, integrationStatus }: RadarShellPro
             {activeView === "approvals" ? (
               <ApprovalsView
                 approvals={snapshot.approvals}
-                approvalStatuses={approvalStatuses}
+                approvalStatuses={mergedApprovalStatuses}
                 onApprovalChange={updateApproval}
                 findings={snapshot.findings}
+                extractions={snapshot.extractions}
+                scores={snapshot.scores}
+                geminiAnalyses={snapshot.geminiAnalyses}
               />
             ) : null}
           </div>
@@ -213,7 +246,7 @@ export function RadarShell({ initialSnapshot, integrationStatus }: RadarShellPro
           bundle={selectedBundle}
           approvalStatus={
             selectedBundle.approval
-              ? approvalStatuses[selectedBundle.approval.id] ?? selectedBundle.approval.status
+              ? mergedApprovalStatuses[selectedBundle.approval.id] ?? selectedBundle.approval.status
               : undefined
           }
           onApprovalChange={updateApproval}
@@ -225,7 +258,7 @@ export function RadarShell({ initialSnapshot, integrationStatus }: RadarShellPro
           approval={toastApproval}
           onApprove={() => updateApproval(toastApproval.id, "approved")}
           onNeedsInfo={() => updateApproval(toastApproval.id, "needs_info")}
-          onDismiss={() => setDismissedToastId(toastApproval.id)}
+          onDismiss={() => userActions.setDismissed(toastApproval.findingId, true)}
         />
       ) : null}
 

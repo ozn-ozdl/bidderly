@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import { JetBrains_Mono, Geist, Instrument_Serif, Newsreader, Fraunces, Inter_Tight } from "next/font/google";
+import { JetBrains_Mono, Geist, Newsreader } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 
 import { isClerkConfigured } from "@/lib/env";
 import { defaultTheme } from "@/lib/theme";
-import { ThemeScript } from "@/components/ui/theme-script";
+import { UserStateProvider } from "@/components/realtime/user-state-provider";
 
 import "./globals.css";
 
@@ -20,29 +20,10 @@ const geist = Geist({
   variable: "--font-body",
 });
 
-const instrumentSerif = Instrument_Serif({
-  subsets: ["latin"],
-  display: "swap",
-  weight: "400",
-  variable: "--font-display-console",
-});
-
 const newsreader = Newsreader({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-display-atelier",
-});
-
-const fraunces = Fraunces({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-display-brief",
-});
-
-const interTight = Inter_Tight({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-body-brief",
 });
 
 export const metadata: Metadata = {
@@ -56,18 +37,23 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const themeVars = `${jetbrains.variable} ${geist.variable} ${instrumentSerif.variable} ${newsreader.variable} ${fraunces.variable} ${interTight.variable}`;
+  const themeVars = `${jetbrains.variable} ${geist.variable} ${newsreader.variable}`;
 
   return (
     <html
       lang="en"
       data-theme={defaultTheme}
       className={`${themeVars} h-full antialiased`}
-      style={{ colorScheme: defaultTheme === "console" ? "dark" : "light" }}
+      style={{ colorScheme: "light" }}
     >
-      <body className="min-h-full">
-        <ThemeScript />
-        {isClerkConfigured() ? <ClerkProvider>{children}</ClerkProvider> : children}
+      <body className="h-full">
+        {isClerkConfigured() ? (
+          <ClerkProvider>
+            <UserStateProvider>{children}</UserStateProvider>
+          </ClerkProvider>
+        ) : (
+          children
+        )}
       </body>
     </html>
   );

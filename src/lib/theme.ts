@@ -1,4 +1,4 @@
-export type ThemeId = "brief" | "console" | "atelier";
+export type ThemeId = "atelier";
 
 export type ThemeMeta = {
   id: ThemeId;
@@ -12,26 +12,6 @@ export type ThemeMeta = {
 };
 
 export const themes: Record<ThemeId, ThemeMeta> = {
-  brief: {
-    id: "brief",
-    label: "Intelligence Brief",
-    oneLiner: "Editorial. Newsroom. Bone, ink, signal red.",
-    fonts: {
-      display: "var(--font-display-brief)",
-      body: "var(--font-body-brief)",
-      mono: "var(--font-mono)",
-    },
-  },
-  console: {
-    id: "console",
-    label: "Operations Console",
-    oneLiner: "Mission control. Dark. Phosphor and signal.",
-    fonts: {
-      display: "var(--font-display-console)",
-      body: "var(--font-body-console)",
-      mono: "var(--font-mono)",
-    },
-  },
   atelier: {
     id: "atelier",
     label: "Atelier",
@@ -44,6 +24,6 @@ export const themes: Record<ThemeId, ThemeMeta> = {
   },
 };
 
-export const themeOrder: ThemeId[] = ["brief", "console", "atelier"];
+export const themeOrder: ThemeId[] = ["atelier"];
 
 export const defaultTheme: ThemeId = "atelier";

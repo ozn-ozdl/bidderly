@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { BrandMark } from "@/components/ui/brand";
-import { ThemeSwitcher } from "@/components/ui/site-theme";
 import { LandingAuthControls } from "@/components/ui/landing-auth-controls";
 import { isClerkConfigured } from "@/lib/env";
 import { defaultTheme } from "@/lib/theme";
@@ -56,17 +55,10 @@ function SiteHeader({ clerkConfigured }: { clerkConfigured: boolean }) {
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
-          <ThemeSwitcher current={defaultTheme} className="hidden sm:inline-flex" />
           <LandingAuthControls
             configured={clerkConfigured}
             className="hidden items-center gap-2 sm:flex"
           />
-          <Link
-            href="/direction-preview"
-            className="hidden text-[12px] text-ink-3 hover:text-ink sm:inline"
-          >
-            Design preview
-          </Link>
           <Link
             href="/radar"
             className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-sm)] bg-ink px-3.5 text-[12px] font-semibold text-bg hover:bg-ink-2"

@@ -1,9 +1,11 @@
 "use client";
 
+import { CheckCircle2, Info } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { SectionLabel } from "@/components/ui/section-label";
 import { FindingFeed } from "../finding-feed";
-import { CascadeFlow } from "../cascade-flow";
+import { PipelineOverview } from "../pipeline-overview";
+import { cn } from "@/lib/cn";
 import type { ApprovalRequest, RadarSnapshot } from "@/lib/radar-types";
 
 type RadarViewProps = {
@@ -23,7 +25,7 @@ export function RadarView({
 }: RadarViewProps) {
   return (
     <div className="space-y-4">
-      <CascadeFlow findings={snapshot.findings} scores={snapshot.scores} selectedFindingId={selectedFindingId} />
+      <PipelineOverview snapshot={snapshot} />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
         <Card className="overflow-hidden">
@@ -31,11 +33,8 @@ export function RadarView({
             <div>
               <SectionLabel>Live radar feed</SectionLabel>
               <p className="mt-2 text-[13px] text-ink-3">
-                {snapshot.findings.length} findings · {snapshot.extractions.length} structured · {snapshot.scores.length} scored
+                {snapshot.findings.length} findings · click a row to open the detail
               </p>
-            </div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-mute">
-              click a row to open
             </div>
           </div>
           <FindingFeed
@@ -86,17 +85,23 @@ function PendingDecisionsCard({
           const status = approvalStatuses[a.id] ?? a.status;
           return (
             <li key={a.id} className="flex items-start gap-3 px-5 py-3.5">
-              <span
-                className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
-                  status === "pending"
-                    ? "bg-warn"
-                    : status === "approved"
-                      ? "bg-good"
-                      : "bg-ink-faint"
-                }`}
-              />
+              {status === "pending" ? (
+                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-warn" />
+              ) : status === "approved" ? (
+                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-good" />
+              ) : (
+                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-mute" />
+              )}
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-semibold">{a.title}</div>
+                <div
+                  className={cn(
+                    "truncate text-[13px] font-semibold",
+                    status === "approved" && "text-ink-2",
+                    status === "needs_info" && "text-ink-3",
+                  )}
+                >
+                  {a.title}
+                </div>
                 <p className="mt-0.5 truncate text-[12px] text-ink-mute">{a.blocker}</p>
               </div>
               {status === "pending" ? (
@@ -117,8 +122,15 @@ function PendingDecisionsCard({
                   </button>
                 </div>
               ) : (
-                <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-mute">
-                  {status}
+                <span
+                  className={cn(
+                    "shrink-0 rounded-[var(--radius-sm)] px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em]",
+                    status === "approved"
+                      ? "bg-good-soft text-good"
+                      : "bg-bg-sunk text-ink-3",
+                  )}
+                >
+                  {status === "approved" ? "Approved" : "Needs info"}
                 </span>
               )}
             </li>

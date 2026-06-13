@@ -2,8 +2,6 @@
 
 import { BellRing, Play } from "lucide-react";
 import Link from "next/link";
-import { ThemeSwitcher } from "@/components/ui/site-theme";
-import { defaultTheme } from "@/lib/theme";
 import type { RadarSnapshot } from "@/lib/radar-types";
 
 type RadarHeaderBarProps = {
@@ -43,7 +41,6 @@ export function RadarHeaderBar({
 
         <div className="ml-auto flex items-center gap-2 sm:gap-3">
           {authSlot}
-          <ThemeSwitcher current={defaultTheme} className="hidden md:inline-flex" />
           <button
             type="button"
             onClick={onBellClick}

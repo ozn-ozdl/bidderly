@@ -1,7 +1,6 @@
 "use client";
 
 import { BellRing, FileSearch, Globe2, Gauge } from "lucide-react";
-import { Sparkline } from "@/components/ui/sparkline";
 import { CountUp } from "@/components/ui/count-up";
 import { SectionLabel } from "@/components/ui/section-label";
 import type { ApprovalRequest, RadarSnapshot } from "@/lib/radar-types";
@@ -10,8 +9,6 @@ type RadarMetricStripProps = {
   snapshot: RadarSnapshot;
   pendingApprovals: ApprovalRequest[];
 };
-
-const TREND = [3, 4, 6, 5, 8, 7, 9, 11, 10, 12, 14, 13, 18];
 
 export function RadarMetricStrip({ snapshot, pendingApprovals }: RadarMetricStripProps) {
   const qualified = snapshot.opportunities.length;
@@ -23,23 +20,13 @@ export function RadarMetricStrip({ snapshot, pendingApprovals }: RadarMetricStri
   return (
     <section aria-label="Metrics" className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))]">
       <div className="relative overflow-hidden rounded-[var(--radius)] border border-rule bg-bg-elev p-5 sm:p-6">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <SectionLabel>Active opportunities</SectionLabel>
-            <div className="mt-3 font-display text-[64px] leading-none tracking-display tnum sm:text-[80px]">
-              <CountUp value={qualified} />
-            </div>
-            <div className="mt-2 max-w-md text-[13px] text-ink-3">
-              {pendingApprovals.length} blocked, {snapshot.opportunities.length - pendingApprovals.length} ready for outreach.
-              Indicative value band EUR {totalValue}M+.
-            </div>
-          </div>
-          <div className="hidden flex-col items-end gap-1 sm:flex">
-            <Sparkline data={TREND} width={120} height={40} stroke="var(--accent)" fill="var(--accent-soft)" />
-            <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-mute">
-              14d trend
-            </span>
-          </div>
+        <SectionLabel>Active opportunities</SectionLabel>
+        <div className="mt-3 font-display text-[64px] leading-none tracking-display tnum sm:text-[80px]">
+          <CountUp value={qualified} />
+        </div>
+        <div className="mt-2 max-w-md text-[13px] text-ink-3">
+          {pendingApprovals.length} blocked, {snapshot.opportunities.length - pendingApprovals.length} ready for outreach.
+          Indicative value band EUR {totalValue}M+.
         </div>
       </div>
 

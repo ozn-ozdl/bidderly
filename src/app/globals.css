@@ -63,104 +63,6 @@
   --grain-url: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.08  0 0 0 0 0.06  0 0 0 0 0.04  0 0 0 0.7 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 
-[data-theme="brief"] {
-  --bg: #f4f1ea;
-  --bg-deep: #ebe6d8;
-  --bg-elev: #fbf8f0;
-  --bg-sunk: #e6dfca;
-  --ink: #0b0b0b;
-  --ink-2: #1a1916;
-  --ink-3: #3a3833;
-  --ink-mute: #6b6862;
-  --ink-faint: #9a958c;
-  --rule: #d6cfba;
-  --rule-strong: #b3a98b;
-
-  --accent: #1d2a3a;        /* deep ink-blue */
-  --accent-deep: #0d1828;
-  --accent-soft: #c5cdd9;
-
-  --signal: #c4312f;        /* signal red */
-  --signal-soft: #f1c8c5;
-
-  --good: #2a5a30;
-  --good-soft: #c9d8c3;
-  --warn: #a0640f;
-  --warn-soft: #ecd6a8;
-  --bad: #9c2222;
-  --bad-soft: #ecc4c1;
-  --info: #1d2a3a;
-  --info-soft: #c5cdd9;
-
-  --font-display-brief: "Fraunces", "Bodoni Moda", "Times New Roman", ui-serif, Georgia, serif;
-  --font-body-brief: "Inter Tight", "Inter", ui-sans-serif, system-ui, sans-serif;
-
-  --radius: 2px;
-  --radius-sm: 1px;
-  --radius-lg: 3px;
-  --border-w: 1px;
-  --shadow-1: 0 1px 0 rgba(0, 0, 0, 0.04);
-  --shadow-2: 0 1px 0 rgba(0, 0, 0, 0.06), 0 20px 40px -30px rgba(0, 0, 0, 0.18);
-
-  --ease: cubic-bezier(0.4, 0, 0.2, 1);
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-  --dur-1: 120ms;
-  --dur-2: 240ms;
-  --dur-3: 480ms;
-
-  --grain-opacity: 0.06;
-  --grain-url: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='280' height='280'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.78' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.04  0 0 0 0 0.04  0 0 0 0 0.04  0 0 0 0.9 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-}
-
-[data-theme="console"] {
-  --bg: #0a0a0c;
-  --bg-deep: #050507;
-  --bg-elev: #111114;
-  --bg-sunk: #06060a;
-  --ink: #e9eaef;
-  --ink-2: #c7cad2;
-  --ink-3: #8c909b;
-  --ink-mute: #5a5e69;
-  --ink-faint: #34373f;
-  --rule: #1d1f25;
-  --rule-strong: #2c2f37;
-
-  --accent: #7cf38c;        /* phosphor */
-  --accent-deep: #4dc860;
-  --accent-soft: #14301a;
-
-  --signal: #ff7a59;        /* signal orange */
-  --signal-soft: #2a1610;
-
-  --good: #7cf38c;
-  --good-soft: #14301a;
-  --warn: #ffb648;
-  --warn-soft: #2b1d09;
-  --bad: #ff5c5c;
-  --bad-soft: #2c0f0f;
-  --info: #79c0ff;
-  --info-soft: #0d2034;
-
-  --font-display-console: "Instrument Serif", "Times New Roman", ui-serif, Georgia, serif;
-  --font-body-console: "Geist", "Inter", ui-sans-serif, system-ui, sans-serif;
-
-  --radius: 6px;
-  --radius-sm: 3px;
-  --radius-lg: 10px;
-  --border-w: 1px;
-  --shadow-1: 0 0 0 1px rgba(124, 243, 140, 0.05);
-  --shadow-2: 0 0 0 1px rgba(124, 243, 140, 0.1), 0 20px 50px -30px rgba(0, 0, 0, 0.7);
-
-  --ease: cubic-bezier(0.4, 0, 0.2, 1);
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --dur-1: 100ms;
-  --dur-2: 220ms;
-  --dur-3: 420ms;
-
-  --grain-opacity: 0.04;
-  --grain-url: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.5  0 0 0 0 1  0 0 0 0 0.6  0 0 0 0.5 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-}
-
 /* =========================================================================
    Base
    ========================================================================= */
@@ -178,13 +80,8 @@ body {
   font-family: var(--font-body, "Geist", "Inter", ui-sans-serif, system-ui, sans-serif);
 }
 
-[data-theme="brief"] body,
-[data-theme="atelier"] body {
+body {
   font-feature-settings: "ss01", "cv11", "kern";
-}
-
-[data-theme="console"] body {
-  font-feature-settings: "ss01", "tnum";
 }
 
 button {
@@ -204,11 +101,6 @@ button:disabled {
 ::selection {
   background: var(--accent);
   color: var(--bg);
-}
-
-[data-theme="console"] ::selection {
-  background: var(--accent);
-  color: var(--bg-deep);
 }
 
 a {
@@ -287,10 +179,6 @@ a {
   background-size: 220px 220px;
   opacity: var(--grain-opacity);
   mix-blend-mode: multiply;
-}
-
-[data-theme="console"] .grain::after {
-  mix-blend-mode: screen;
 }
 
 /* Hairline that respects theme */

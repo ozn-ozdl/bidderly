@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Activity, BellRing, GitBranch, Radar } from "lucide-react";
+import { Radar, GitBranch, BellRing } from "lucide-react";
 import { BrandMark } from "@/components/ui/brand";
 import { defaultTheme } from "@/lib/theme";
 import { cn } from "@/lib/cn";
@@ -12,22 +12,22 @@ type Item = {
   key: SidebarKey;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  hint?: string;
 };
 
 const items: Item[] = [
-  { key: "radar", label: "Radar", icon: Radar, hint: "Live findings" },
-  { key: "pipeline", label: "Pipeline", icon: GitBranch, hint: "Sources · runs · events" },
-  { key: "approvals", label: "Approvals", icon: BellRing, hint: "Human decisions" },
+  { key: "radar", label: "Radar", icon: Radar },
+  { key: "pipeline", label: "Pipeline", icon: GitBranch },
+  { key: "approvals", label: "Approvals", icon: BellRing },
 ];
 
 type RadarSidebarProps = {
   activeView: SidebarKey;
   onView: (key: SidebarKey) => void;
   pendingCount: number;
+  lastRunId: string;
 };
 
-export function RadarSidebar({ activeView, onView, pendingCount }: RadarSidebarProps) {
+export function RadarSidebar({ activeView, onView, pendingCount, lastRunId }: RadarSidebarProps) {
   return (
     <>
       <aside className="hidden w-64 shrink-0 flex-col border-r border-rule bg-bg-elev lg:flex">
@@ -35,10 +35,6 @@ export function RadarSidebar({ activeView, onView, pendingCount }: RadarSidebarP
           <Link href="/" aria-label="Bidderly.win home">
             <BrandMark theme={defaultTheme} size="sm" />
           </Link>
-          <div className="ml-auto flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.16em] text-ink-mute">
-            <span className="h-1.5 w-1.5 rounded-full bg-good" />
-            live
-          </div>
         </div>
 
         <nav className="flex-1 space-y-0.5 px-3 py-4">
@@ -51,62 +47,38 @@ export function RadarSidebar({ activeView, onView, pendingCount }: RadarSidebarP
                 type="button"
                 onClick={() => onView(item.key)}
                 className={cn(
-                  "group flex w-full items-start gap-3 rounded-[var(--radius-sm)] px-3 py-2.5 text-left transition-colors",
+                  "flex w-full items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2.5 text-left transition-colors",
                   active
                     ? "bg-ink text-bg"
                     : "text-ink-2 hover:bg-bg-sunk hover:text-ink",
                 )}
                 aria-current={active ? "page" : undefined}
               >
-                <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", active ? "text-bg" : "text-ink-mute")} />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-2 text-[13px] font-semibold leading-tight">
-                    {item.label}
-                    {item.key === "approvals" && pendingCount > 0 ? (
-                      <span
-                        className={cn(
-                          "ml-auto inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 font-mono text-[9px] font-bold tnum",
-                          active ? "bg-bg text-ink" : "bg-signal text-bg",
-                        )}
-                      >
-                        {pendingCount}
-                      </span>
-                    ) : null}
+                <Icon className={cn("h-4 w-4 shrink-0", active ? "text-bg" : "text-ink-mute")} />
+                <span className="flex-1 text-[13px] font-semibold">{item.label}</span>
+                {item.key === "approvals" && pendingCount > 0 ? (
+                  <span
+                    className={cn(
+                      "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 font-mono text-[9px] font-bold tnum",
+                      active ? "bg-bg text-ink" : "bg-signal text-bg",
+                    )}
+                  >
+                    {pendingCount}
                   </span>
-                  {item.hint ? (
-                    <span
-                      className={cn(
-                        "mt-0.5 block text-[11px] leading-tight",
-                        active ? "text-bg/70" : "text-ink-mute",
-                      )}
-                    >
-                      {item.hint}
-                    </span>
-                  ) : null}
-                </span>
+                ) : null}
               </button>
             );
           })}
         </nav>
 
-        <div className="border-t border-rule px-3 py-3">
-          <div className="rounded-[var(--radius-sm)] border border-rule bg-bg-sunk/60 p-3">
-            <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">
-              <Activity className="h-3 w-3" />
-              pioneer cascade
-            </div>
-            <div className="mt-1.5 font-mono text-[11px] tnum text-ink-2">
-              GLiNER2 → Gemma 4 → Gemini
-            </div>
-            <div className="mt-2 text-[10px] text-ink-mute">
-              Gemini called on 2 / 18 findings today
-            </div>
-          </div>
+        <div className="border-t border-rule px-4 py-3">
+          <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-mute">Last run</div>
+          <div className="mt-0.5 font-mono text-[11px] tnum text-ink-2">{lastRunId}</div>
         </div>
       </aside>
 
       <nav
-        className="sticky bottom-0 z-20 flex items-center justify-around border-t border-rule bg-bg-elev/95 px-2 py-1.5 backdrop-blur lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-20 flex items-center justify-around border-t border-rule bg-bg-elev/95 px-2 py-1.5 backdrop-blur lg:hidden"
         aria-label="Dashboard navigation"
       >
         {items.map((item) => {
