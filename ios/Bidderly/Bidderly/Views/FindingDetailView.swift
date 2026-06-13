@@ -1,12 +1,21 @@
 import SwiftUI
 
 struct FindingDetailView: View {
+    @Environment(RealtimeClient.self) private var realtime
+
     let bundle: FindingBundle
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 headerCard
+                if let extraction = bundle.extraction,
+                   Geo.coords(for: extraction.entities.location) != nil {
+                    LocationMapCard(
+                        title: bundle.finding.title,
+                        location: extraction.entities.location ?? ""
+                    )
+                }
                 if let extraction = bundle.extraction { extractionCard(extraction) }
                 if let score = bundle.score { scoreCard(score) }
                 if let gemini = bundle.gemini { geminiCard(gemini) }
@@ -19,6 +28,9 @@ struct FindingDetailView: View {
         .background(AppTheme.slateBackground)
         .navigationTitle("Finding detail")
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            realtime.markRead(findingId: bundle.finding.id)
+        }
     }
 
     private var headerCard: some View {
@@ -244,7 +256,6 @@ struct FindingDetailView: View {
     }
 
     private func radarStatus(_ approval: ApprovalRequest) -> ApprovalStatus {
-        // Approval overrides are owned by RadarClient; we read via environment.
         ApprovalActions.shared.status(for: approval.id) ?? approval.status
     }
 }
@@ -258,5 +269,5 @@ final class ApprovalActions {
 
     func approve(_ id: String) { client?.update(approvalId: id, status: .approved) }
     func needsInfo(_ id: String) { client?.update(approvalId: id, status: .needsInfo) }
-    func status(for id: String) -> ApprovalStatus? { client?.approvalOverrides[id] }
+    func status(for id: String) -> ApprovalStatus? { client?.status(forApprovalId: id) }
 }

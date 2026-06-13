@@ -21,7 +21,6 @@ struct DashboardView: View {
                             onOpenApprovals: onOpenApprovals
                         )
                         GlancePipeline(snapshot: snapshot)
-                        TenderMapCard(snapshot: snapshot)
                         GlanceHealth(snapshot: snapshot)
                     }
                     .padding(.horizontal)
