@@ -189,8 +189,6 @@ body {
 
 button {
   cursor: pointer;
-  font: inherit;
-  color: inherit;
 }
 
 button:disabled {
