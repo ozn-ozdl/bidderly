@@ -1,0 +1,76 @@
+export type IntegrationStatus = {
+  mode: "fixture" | "live-ready" | "partial-live";
+  clerk: boolean;
+  database: boolean;
+  tavily: boolean;
+  pioneerGliner: boolean;
+  pioneerGemma: boolean;
+  gemini: boolean;
+  missing: string[];
+};
+
+const liveProviderKeys = [
+  "TAVILY_API_KEY",
+  "PIONEER_GLINER_ENDPOINT",
+  "PIONEER_GLINER_API_KEY",
+  "PIONEER_GEMMA4_ENDPOINT",
+  "PIONEER_GEMMA4_API_KEY",
+  "GEMINI_API_KEY",
+] as const;
+
+export function envFlag(name: string, defaultValue = false) {
+  const value = process.env[name];
+
+  if (value === undefined) {
+    return defaultValue;
+  }
+
+  return ["1", "true", "yes", "on"].includes(value.toLowerCase());
+}
+
+export function isClerkConfigured() {
+  return Boolean(
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY,
+  );
+}
+
+export function isDatabaseConfigured() {
+  return Boolean(process.env.DATABASE_URL);
+}
+
+export function getIntegrationStatus(): IntegrationStatus {
+  const missing = liveProviderKeys.filter((key) => !process.env[key]);
+  const liveReady = missing.length === 0;
+  const forceFixtures = envFlag("DEMO_USE_FIXTURES", true);
+
+  return {
+    mode: forceFixtures ? "fixture" : liveReady ? "live-ready" : "partial-live",
+    clerk: isClerkConfigured(),
+    database: isDatabaseConfigured(),
+    tavily: Boolean(process.env.TAVILY_API_KEY),
+    pioneerGliner: Boolean(
+      process.env.PIONEER_GLINER_ENDPOINT && process.env.PIONEER_GLINER_API_KEY,
+    ),
+    pioneerGemma: Boolean(
+      process.env.PIONEER_GEMMA4_ENDPOINT && process.env.PIONEER_GEMMA4_API_KEY,
+    ),
+    gemini: Boolean(process.env.GEMINI_API_KEY),
+    missing,
+  };
+}
+
+export function shouldUseFixtureMode() {
+  const status = getIntegrationStatus();
+
+  return status.mode !== "live-ready";
+}
+
+export function requireCronSecret(request: Request) {
+  const expected = process.env.SCOUT_CRON_SECRET;
+
+  if (!expected) {
+    return true;
+  }
+
+  return request.headers.get("authorization") === `Bearer ${expected}`;
+}
