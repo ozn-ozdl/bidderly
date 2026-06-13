@@ -18,6 +18,7 @@ type ApprovalsViewProps = {
   approvals: ApprovalRequest[];
   approvalStatuses: Record<string, ApprovalRequest["status"]>;
   onApprovalChange: (id: string, status: ApprovalRequest["status"]) => void;
+  onOpenDetail: (findingId: string) => void;
   onReset: () => void;
   isResetting: boolean;
   findings: Finding[];
@@ -30,6 +31,7 @@ export function ApprovalsView({
   approvals,
   approvalStatuses,
   onApprovalChange,
+  onOpenDetail,
   onReset,
   isResetting,
   findings,
@@ -193,6 +195,15 @@ export function ApprovalsView({
                       detail={gemini?.summary ?? "Deep reasoning was not invoked for this finding."}
                     />
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => onOpenDetail(a.findingId)}
+                    className="mt-3 inline-flex items-center gap-1 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-3 hover:text-ink"
+                  >
+                    Open finding detail
+                    <ChevronRight className="h-3 w-3" />
+                  </button>
                 </Card>
               </li>
             );

@@ -48,66 +48,46 @@ struct ApprovalsView: View {
     }
 }
 
+// MARK: - Card
+
+/// An approval card that answers three questions in order:
+/// 1. What is it? (title + due + blocker)
+/// 2. What did the cascade say about it? (compact GLiNER2 / Gemma 4 / Gemini)
+/// 3. What happens if I act? (consequence line + decide buttons)
 struct ApprovalCard: View {
     @Environment(RadarClient.self) private var radar
     let approval: ApprovalRequest
 
-    var status: ApprovalStatus {
+    private var status: ApprovalStatus {
         radar.status(for: approval)
     }
 
+    private var bundle: FindingBundle? {
+        radar.bundle(forFinding: approval.findingId)
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("Human escalation", systemImage: "person.crop.circle.badge.exclamationmark")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(AppTheme.slateMuted)
-                Spacer()
-                ApprovalStatusBadge(status: status)
+        VStack(alignment: .leading, spacing: 12) {
+            header
+            titleBlock
+            if let bundle {
+                cascadeSection(bundle: bundle)
             }
-            Text(approval.title)
-                .font(.headline)
-                .foregroundStyle(AppTheme.slateInk)
-            Text(approval.blocker)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(AppTheme.amberAlert)
-            Text(approval.requestedAction)
-                .font(.subheadline)
-                .foregroundStyle(AppTheme.slateMuted)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if let due = ISO8601DateFormatter().date(from: approval.dueAt) {
-                HStack(spacing: 4) {
-                    Image(systemName: "clock.fill").foregroundStyle(AppTheme.amberAlert)
-                    Text("Due \(due.formatted(date: .abbreviated, time: .shortened))")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppTheme.amberAlert)
-                }
-            }
-
             if status == .pending {
-                HStack(spacing: 10) {
-                    Button {
-                        radar.update(approvalId: approval.id, status: .approved)
-                    } label: {
-                        Label("Approve", systemImage: "checkmark.circle.fill")
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(AppTheme.slateInk, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .foregroundStyle(.white)
-                            .font(.subheadline.weight(.semibold))
-                    }
-                    Button {
-                        radar.update(approvalId: approval.id, status: .needsInfo)
-                    } label: {
-                        Label("Request info", systemImage: "questionmark.circle")
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(Color.gray.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .foregroundStyle(AppTheme.slateInk)
-                            .font(.subheadline.weight(.semibold))
-                    }
-                }
+                consequenceBlock(
+                    label: "If you approve",
+                    icon: "arrow.right.circle.fill",
+                    tint: AppTheme.success,
+                    text: approval.requestedAction
+                )
+                actionRow
+            } else {
+                consequenceBlock(
+                    label: status == .approved ? "Approved · agent will" : "Needs info · waiting on",
+                    icon: status == .approved ? "checkmark.seal.fill" : "questionmark.circle.fill",
+                    tint: status == .approved ? AppTheme.success : AppTheme.slateMuted,
+                    text: approval.requestedAction
+                )
             }
         }
         .padding(16)
@@ -119,24 +99,171 @@ struct ApprovalCard: View {
         )
         .shadow(color: Color.black.opacity(0.04), radius: 6, y: 2)
     }
-}
 
-struct ApprovalRow: View {
-    let approval: ApprovalRequest
+    private var header: some View {
+        HStack {
+            Label("Human escalation", systemImage: "person.crop.circle.badge.exclamationmark")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.slateMuted)
+            Spacer()
+            ApprovalStatusBadge(status: status)
+        }
+    }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(approval.title).font(.subheadline.weight(.semibold)).foregroundStyle(AppTheme.slateInk)
-            Text(approval.blocker).font(.caption).foregroundStyle(AppTheme.slateMuted).lineLimit(2)
-            if let due = ISO8601DateFormatter().date(from: approval.dueAt) {
-                Text("Due \(due.formatted(date: .abbreviated, time: .shortened))")
-                    .font(.caption2.monospacedDigit())
+    private var titleBlock: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(approval.title)
+                .font(.headline)
+                .foregroundStyle(AppTheme.slateInk)
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption)
                     .foregroundStyle(AppTheme.amberAlert)
+                Text(approval.blocker)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppTheme.amberAlert)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let due = ISO8601DateFormatter().date(from: approval.dueAt) {
+                HStack(spacing: 4) {
+                    Image(systemName: "clock.fill").font(.caption2).foregroundStyle(AppTheme.amberAlert)
+                    Text("Due \(due.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.amberAlert)
+                }
             }
         }
-        .padding(12)
+    }
+
+    /// "What the cascade found" — exactly the GLiNER2 / Gemma 4 / Gemini output
+    /// for this specific approval's finding, shown as a compact 3-row list.
+    private func cascadeSection(bundle: FindingBundle) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("What the cascade found")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.slateMuted)
+            cascadeRow(
+                icon: "text.magnifyingglass",
+                title: "GLiNER2",
+                detail: bundle.extraction.map { extraction in
+                    let parts = [extraction.entities.buyerIssuer, extraction.entities.budgetValue, extraction.entities.deadline].compactMap { $0 }
+                    let tail = parts.isEmpty ? "\(Int(extraction.confidence * 100))% confidence" : parts.joined(separator: " · ")
+                    return "\(Int(extraction.confidence * 100))% · \(tail)"
+                } ?? "No extraction"
+            )
+            cascadeRow(
+                icon: "gauge.with.dots.needle.50percent",
+                title: "Gemma 4",
+                detail: bundle.score.map { score in
+                    "Score \(score.worthOutreachScore) · \(score.route.replacingOccurrences(of: "_", with: " "))"
+                } ?? "No score"
+            )
+            cascadeRow(
+                icon: "sparkles",
+                title: "Gemini",
+                detail: bundle.gemini?.summary
+                    ?? (bundle.score.map { $0.worthOutreachScore >= 70 ? "Expected (score ≥ 70)" : "Skipped (gate)" } ?? "Not called")
+            )
+        }
+        .padding(10)
+        .background(AppTheme.slateBackground.opacity(0.5), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func cascadeRow(icon: String, title: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: icon)
+                .font(.caption)
+                .foregroundStyle(AppTheme.deepTeal)
+                .frame(width: 14)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(AppTheme.slateMuted)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.slateInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func consequenceBlock(label: String, icon: String, tint: Color, text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: icon)
+                .foregroundStyle(tint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(tint)
+                Text(text)
+                    .font(.subheadline)
+                    .foregroundStyle(AppTheme.slateInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppTheme.amberAlert.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private var actionRow: some View {
+        HStack(spacing: 10) {
+            Button {
+                radar.update(approvalId: approval.id, status: .approved)
+            } label: {
+                Label("Approve", systemImage: "checkmark.circle.fill")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(AppTheme.slateInk, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .foregroundStyle(.white)
+                    .font(.subheadline.weight(.semibold))
+            }
+            Button {
+                radar.update(approvalId: approval.id, status: .needsInfo)
+            } label: {
+                Label("Need info", systemImage: "questionmark.circle")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Color.gray.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .foregroundStyle(AppTheme.slateInk)
+                    .font(.subheadline.weight(.semibold))
+            }
+        }
+    }
+}
+
+// MARK: - Status badge
+
+struct ApprovalStatusBadge: View {
+    let status: ApprovalStatus
+
+    private var label: String {
+        switch status {
+        case .pending: return "Pending"
+        case .approved: return "Approved"
+        case .needsInfo: return "Needs info"
+        }
+    }
+
+    private var tint: Color {
+        switch status {
+        case .pending: return AppTheme.amberAlert
+        case .approved: return AppTheme.success
+        case .needsInfo: return AppTheme.slateMuted
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Circle().fill(tint).frame(width: 6, height: 6)
+            Text(label)
+                .font(.caption2.weight(.bold))
+                .textCase(.uppercase)
+                .foregroundStyle(tint)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(tint.opacity(0.12), in: Capsule())
     }
 }
 

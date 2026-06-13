@@ -16,22 +16,34 @@ struct OpportunitiesView: View {
                             message: "Findings with a worth-outreach score of 60+ and route = qualify/human_review appear here."
                         )
                     } else {
-                        LazyVStack(spacing: 10) {
-                            ForEach(snapshot.opportunities) { opportunity in
-                                let watched = userState.isWatched(findingId: opportunity.findingId)
-                                NavigationLink(value: NavRoute.finding(opportunity.findingId)) {
-                                    OpportunityRow(
-                                        opportunity: opportunity,
-                                        watched: watched,
-                                        onToggleWatch: {
-                                            realtime.toggleWatch(
-                                                findingId: opportunity.findingId,
-                                                add: !watched
-                                            )
-                                        }
-                                    )
+                        let groups = OpportunityGroups(snapshot.opportunities)
+                        LazyVStack(alignment: .leading, spacing: 14) {
+                            if !groups.blocked.isEmpty {
+                                OpportunitySection(
+                                    title: "Needs a decision",
+                                    hint: "Blocked on an approval. Resolve it in the Approvals tab.",
+                                    opportunities: groups.blocked
+                                ) { opportunity in
+                                    rowLink(for: opportunity)
                                 }
-                                .buttonStyle(.plain)
+                            }
+                            if !groups.ready.isEmpty {
+                                OpportunitySection(
+                                    title: "Ready for outreach",
+                                    hint: "Qualified and unblocked. Act now or mark watched.",
+                                    opportunities: groups.ready
+                                ) { opportunity in
+                                    rowLink(for: opportunity)
+                                }
+                            }
+                            if !groups.monitoring.isEmpty {
+                                OpportunitySection(
+                                    title: "Monitoring",
+                                    hint: "Long-tail. Worth-outreach score below the active bar.",
+                                    opportunities: groups.monitoring
+                                ) { opportunity in
+                                    rowLink(for: opportunity)
+                                }
                             }
                         }
                         .padding(.horizontal)
@@ -50,6 +62,67 @@ struct OpportunitiesView: View {
                     if let bundle = radar.bundle(forFinding: id) { FindingDetailView(bundle: bundle) }
                 default: EmptyView()
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func rowLink(for opportunity: Opportunity) -> some View {
+        let watched = userState.isWatched(findingId: opportunity.findingId)
+        NavigationLink(value: NavRoute.finding(opportunity.findingId)) {
+            OpportunityRow(
+                opportunity: opportunity,
+                watched: watched,
+                onToggleWatch: {
+                    realtime.toggleWatch(findingId: opportunity.findingId, add: !watched)
+                }
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Grouping
+
+/// Splits the snapshot's opportunities into the three buckets the user
+/// actually thinks in: "needs me", "go now", and "watch list".
+struct OpportunityGroups {
+    let blocked: [Opportunity]
+    let ready: [Opportunity]
+    let monitoring: [Opportunity]
+
+    init(_ opportunities: [Opportunity]) {
+        self.blocked = opportunities.filter { $0.status == .blocked }
+        self.ready = opportunities.filter { $0.status == .readyForOutreach || $0.status == .new }
+        self.monitoring = opportunities.filter { $0.status == .monitoring }
+    }
+}
+
+// MARK: - Section
+
+private struct OpportunitySection<Content: View>: View {
+    let title: String
+    let hint: String
+    let opportunities: [Opportunity]
+    @ViewBuilder let content: (Opportunity) -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title.uppercased())
+                    .font(.caption.weight(.bold))
+                    .tracking(0.6)
+                    .foregroundStyle(AppTheme.slateMuted)
+                Text("· \(opportunities.count)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.slateMuted)
+                Spacer()
+            }
+            Text(hint)
+                .font(.caption2)
+                .foregroundStyle(AppTheme.slateMuted)
+            VStack(spacing: 10) {
+                ForEach(opportunities) { content($0) }
             }
         }
     }

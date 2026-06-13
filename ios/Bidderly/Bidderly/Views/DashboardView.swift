@@ -7,26 +7,31 @@ struct DashboardView: View {
     @Environment(RealtimeClient.self) private var realtime
     @Environment(Clerk.self) private var clerk
 
+    /// Switches the parent tab to the Approvals queue. The glance answers
+    /// "what needs me?" and hands off the action to the dedicated queue.
+    let onOpenApprovals: () -> Void
+
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    if let snapshot = radar.snapshot {
-                        headerCard(snapshot: snapshot)
-                        metricsGrid(snapshot: snapshot)
-                        pendingApprovalsPreview
-                        topOpportunitiesPreview(snapshot: snapshot)
-                        recentActivityPreview(snapshot: snapshot)
-                    } else if let error = radar.errorMessage {
-                        ErrorCard(message: error, onRetry: { Task { await radar.refresh() } })
-                            .padding(.horizontal)
-                    } else {
-                        ProgressView()
-                            .frame(maxWidth: .infinity, minHeight: 240)
+                if let snapshot = radar.snapshot {
+                    VStack(spacing: 16) {
+                        GlanceHero(
+                            pendingCount: radar.pendingApprovals().count,
+                            onOpenApprovals: onOpenApprovals
+                        )
+                        GlancePipeline(snapshot: snapshot)
+                        GlanceHealth(snapshot: snapshot)
                     }
+                    .padding(.horizontal)
+                    .padding(.vertical, 12)
+                } else if let error = radar.errorMessage {
+                    ErrorCard(message: error, onRetry: { Task { await radar.refresh() } })
+                        .padding()
+                } else {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, minHeight: 240)
                 }
-                .padding(.horizontal)
-                .padding(.vertical, 8)
             }
             .background(AppTheme.slateBackground)
             .navigationTitle("Opportunity Radar")
@@ -43,144 +48,154 @@ struct DashboardView: View {
             }
         }
     }
+}
 
-    // MARK: - Subviews
+// MARK: - Hero
 
-    private func headerCard(snapshot: RadarSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle().fill(AppTheme.gradient).frame(width: 44, height: 44)
-                    Image(systemName: "dot.radiowaves.left.and.right").foregroundStyle(.white).bold()
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Live radar feed").font(.caption.weight(.semibold))
-                        .textCase(.uppercase)
-                        .foregroundStyle(AppTheme.teal)
-                    Text(cascadeLabel(snapshot.cascade))
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(AppTheme.slateInk)
-                }
-                Spacer()
-                Text(snapshot.integrations?.mode.replacingOccurrences(of: "-", with: " ").uppercased() ?? "FIXTURE")
-                    .font(.system(size: 10, weight: .bold))
-                    .monospaced()
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(AppTheme.teal.opacity(0.15))
-                    .foregroundStyle(AppTheme.deepTeal)
-                    .clipShape(Capsule())
-            }
+/// "N approvals need your decision" with a single primary CTA. This is the
+/// only thing the glance is about: orient the user, hand off the action.
+private struct GlanceHero: View {
+    let pendingCount: Int
+    let onOpenApprovals: () -> Void
 
-            Divider()
-
-            HStack(spacing: 6) {
-                Image(systemName: "person.circle.fill")
-                    .foregroundStyle(AppTheme.teal)
-                Text(clerk.user?.firstName ?? clerk.user?.primaryEmailAddress?.emailAddress ?? "Signed in")
-                    .font(.subheadline.weight(.medium))
+    var body: some View {
+        let isClear = pendingCount == 0
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: isClear ? "checkmark.seal.fill" : "bell.badge.fill")
+                    .font(.title2)
+                    .foregroundStyle(isClear ? AppTheme.success : AppTheme.amberAlert)
+                Text(isClear ? "Inbox zero" : "\(pendingCount) approval\(pendingCount == 1 ? "" : "s") need your decision")
+                    .font(.title3.weight(.bold))
                     .foregroundStyle(AppTheme.slateInk)
-                Spacer()
-                Text(snapshot.scoutRun.status.uppercased())
-                    .font(.system(size: 10, weight: .bold))
-                    .monospaced()
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(AppTheme.success.opacity(0.15))
-                    .foregroundStyle(AppTheme.success)
-                    .clipShape(Capsule())
+            }
+            Text(isClear
+                 ? "The cascade is working through the queue. You'll be alerted when something needs you."
+                 : "The cascade is blocked until you decide. Tap to review each request.")
+                .font(.subheadline)
+                .foregroundStyle(AppTheme.slateMuted)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                onOpenApprovals()
+            } label: {
+                HStack {
+                    Text(isClear ? "Open approvals" : "Review \(pendingCount) approval\(pendingCount == 1 ? "" : "s")")
+                    Spacer()
+                    Image(systemName: "arrow.right")
+                }
+                .font(.subheadline.weight(.semibold))
+                .padding(.vertical, 12)
+                .padding(.horizontal, 14)
+                .frame(maxWidth: .infinity)
+                .background(isClear ? AppTheme.deepTeal : AppTheme.amberAlert, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .foregroundStyle(.white)
             }
         }
         .cardStyle()
     }
+}
 
-    private func metricsGrid(snapshot: RadarSnapshot) -> some View {
-        let pendingCount = radar.pendingApprovals().count
-        return LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-            MetricTile(icon: "globe", title: "Sources scanned", value: "\(snapshot.scoutRun.sourcesScanned)", tint: AppTheme.teal)
-            MetricTile(icon: "doc.text.magnifyingglass", title: "Findings discovered", value: "\(snapshot.scoutRun.findingsDiscovered)", tint: AppTheme.deepTeal)
-            MetricTile(icon: "gauge.with.dots.needle.50percent", title: "Qualified opportunities", value: "\(snapshot.opportunities.count)", tint: AppTheme.success)
-            MetricTile(icon: "bell.badge", title: "Pending decisions", value: "\(pendingCount)", tint: pendingCount > 0 ? AppTheme.amberAlert : Color.gray)
-        }
+// MARK: - Pipeline
+
+/// "How many potential tenders were scanned and processed" — the
+/// Pioneer cascade in one horizontally scrollable row.
+private struct GlancePipeline: View {
+    let snapshot: RadarSnapshot
+
+    private var stages: [(String, Int)] {
+        [
+            ("Scanned", snapshot.scoutRun.sourcesScanned),
+            ("Discovered", snapshot.findings.count),
+            ("Structured", snapshot.extractions.count),
+            ("Scored", snapshot.scores.count),
+            ("Qualified", snapshot.opportunities.count),
+        ]
     }
 
-    private var pendingApprovalsPreview: some View {
-        let pending = radar.pendingApprovals()
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("Pending approvals", systemImage: "bell.badge")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                NavigationLink(value: NavRoute.approvals) {
-                    Text("See all").font(.subheadline.weight(.semibold))
-                }
-            }
-            if pending.isEmpty {
-                Text("No decisions pending. Low-score findings are auto-suppressed.")
-                    .font(.subheadline)
-                    .foregroundStyle(AppTheme.slateMuted)
-                    .padding(.vertical, 6)
-            } else {
-                ForEach(pending.prefix(2)) { approval in
-                    NavigationLink(value: NavRoute.finding(approval.findingId)) {
-                        ApprovalRow(approval: approval)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .cardStyle()
-    }
-
-    private func topOpportunitiesPreview(snapshot: RadarSnapshot) -> some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label("Top opportunities", systemImage: "gauge.with.dots.needle.50percent")
+                Label("Pipeline", systemImage: "shield.checkered")
                     .font(.subheadline.weight(.semibold))
                 Spacer()
-                NavigationLink(value: NavRoute.opportunities) {
-                    Text("See all").font(.subheadline.weight(.semibold))
-                }
+                Text(snapshot.scoutRun.id)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(AppTheme.slateMuted)
             }
-            ForEach(snapshot.opportunities.prefix(3)) { opportunity in
-                let watched = userState.isWatched(findingId: opportunity.findingId)
-                NavigationLink(value: NavRoute.finding(opportunity.findingId)) {
-                    OpportunityRow(
-                        opportunity: opportunity,
-                        watched: watched,
-                        onToggleWatch: {
-                            realtime.toggleWatch(findingId: opportunity.findingId, add: !watched)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(Array(stages.enumerated()), id: \.offset) { index, stage in
+                        stageCell(name: stage.0, value: stage.1)
+                        if index < stages.count - 1 {
+                            Image(systemName: "chevron.right")
+                                .font(.caption2)
+                                .foregroundStyle(AppTheme.slateMuted)
                         }
-                    )
+                    }
                 }
-                .buttonStyle(.plain)
+                .padding(.vertical, 2)
             }
         }
         .cardStyle()
     }
 
-    private func recentActivityPreview(snapshot: RadarSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Label("Recent activity", systemImage: "clock.arrow.circlepath")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                NavigationLink(value: NavRoute.activity) {
-                    Text("Full timeline").font(.subheadline.weight(.semibold))
-                }
-            }
-            ForEach(Array(radar.liveEvents.prefix(4))) { evt in
-                ActivityRow(event: evt)
-            }
+    private func stageCell(name: String, value: Int) -> some View {
+        VStack(spacing: 2) {
+            Text("\(value)")
+                .font(.title3.weight(.bold).monospacedDigit())
+                .foregroundStyle(AppTheme.slateInk)
+            Text(name)
+                .font(.caption2)
+                .foregroundStyle(AppTheme.slateMuted)
         }
-        .cardStyle()
+        .frame(minWidth: 56)
+    }
+}
+
+// MARK: - Health
+
+/// Single line: are the models answering, and when did the last run finish.
+private struct GlanceHealth: View {
+    let snapshot: RadarSnapshot
+
+    private var degradedSources: Int {
+        snapshot.sources.filter { $0.status != .healthy }.count
     }
 
-    private func cascadeLabel(_ cascade: CascadeInfo?) -> String {
-        guard let cascade else { return "Cascade: GLiNER2 → Gemma 4 → Gemini" }
-        return [cascade.extraction, cascade.scoring, cascade.reasoning]
-            .map { $0.components(separatedBy: " ").first ?? $0 }
-            .joined(separator: " → ")
+    private var statusColor: Color {
+        degradedSources == 0 ? AppTheme.success : AppTheme.amberAlert
+    }
+
+    private var statusText: String {
+        degradedSources == 0
+            ? "All models responding"
+            : "\(degradedSources) source\(degradedSources == 1 ? "" : "s") degraded"
+    }
+
+    private var lastRunText: String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withDay, .withMonth, .withShortMonth, .withTime, .withDashSeparatorInDate]
+        if let date = formatter.date(from: snapshot.scoutRun.startedAt) {
+            return "Last run " + date.formatted(date: .omitted, time: .shortened)
+        }
+        return "Last run " + snapshot.scoutRun.id
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Circle().fill(statusColor).frame(width: 8, height: 8)
+            Text(statusText)
+                .font(.caption)
+                .foregroundStyle(AppTheme.slateMuted)
+            Spacer()
+            Text(lastRunText)
+                .font(.caption.monospaced())
+                .foregroundStyle(AppTheme.slateMuted)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Color.white.opacity(0.6), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
@@ -195,8 +210,45 @@ enum NavRoute: Hashable {
 
 #if DEBUG
 #Preview("Dashboard · signed out (fallback identity)") {
-    DashboardView()
+    DashboardView(onOpenApprovals: {})
         .environment(PreviewSupport.previewClerk())
+        .previewEnvironments()
+}
+
+#Preview("Dashboard · inbox zero (no pending)") {
+    let stateStore = UserStateStore()
+    let radar = PreviewSupport.makeRadarClient(stateStore: stateStore)
+    let pending = PreviewSupport.snapshot.approvals.filter { $0.status == .pending }
+    let resolved = PreviewSupport.snapshot.approvals.filter { $0.status != .pending }
+    radar.seedForPreview(RadarSnapshot(
+        scoutRun: PreviewSupport.snapshot.scoutRun,
+        sources: PreviewSupport.snapshot.sources,
+        findings: PreviewSupport.snapshot.findings,
+        extractions: PreviewSupport.snapshot.extractions,
+        scores: PreviewSupport.snapshot.scores,
+        geminiAnalyses: PreviewSupport.snapshot.geminiAnalyses,
+        opportunities: PreviewSupport.snapshot.opportunities,
+        approvals: pending.map { approval in
+            ApprovalRequest(
+                id: approval.id,
+                findingId: approval.findingId,
+                opportunityId: approval.opportunityId,
+                title: approval.title,
+                requester: approval.requester,
+                blocker: approval.blocker,
+                requestedAction: approval.requestedAction,
+                dueAt: approval.dueAt,
+                status: .approved,
+                alertEligible: approval.alertEligible
+            )
+        } + resolved,
+        events: PreviewSupport.snapshot.events,
+        cascade: PreviewSupport.snapshot.cascade,
+        integrations: PreviewSupport.snapshot.integrations
+    ))
+    return DashboardView(onOpenApprovals: {})
+        .environment(PreviewSupport.previewClerk())
+        .environment(radar)
         .previewEnvironments()
 }
 #endif

@@ -7,7 +7,6 @@ struct SettingsView: View {
     @Environment(AlarmManager.self) private var alarm
     @Environment(RealtimeClient.self) private var realtime
     @Environment(Clerk.self) private var clerk
-    @State private var presentProfile = false
     @State private var confirmReset = false
     @State private var isResetting = false
 
@@ -16,9 +15,7 @@ struct SettingsView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     accountCard
-                    cascadeCard
-                    apiCard
-                    diagnosticsCard
+                    systemStatusCard
                     approvalsCard
                     alarmCard
                 }
@@ -43,6 +40,8 @@ struct SettingsView: View {
         _ = await radar.resetApprovals()
     }
 
+    // MARK: - Cards
+
     private var accountCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Account", systemImage: "person.crop.circle.fill")
@@ -61,90 +60,30 @@ struct SettingsView: View {
                 UserButton()
                     .frame(width: 36, height: 36)
             }
-            Text("Sign-in, sign-up, profile, and sign-out are powered by the Clerk iOS SDK (`ClerkKit` / `ClerkKitUI`).")
-                .font(.caption)
-                .foregroundStyle(AppTheme.slateMuted)
         }
         .cardStyle()
     }
 
-    private var cascadeCard: some View {
-        let cascade = radar.snapshot?.cascade
-        return VStack(alignment: .leading, spacing: 10) {
-            Label("Pioneer cascade", systemImage: "shield.checkered")
-                .font(.subheadline.weight(.semibold))
-            cascadeRow(icon: "text.magnifyingglass", title: "Extraction", model: cascade?.extraction ?? "fine-tuned GLiNER2")
-            cascadeRow(icon: "gauge.with.dots.needle.50percent", title: "Scoring", model: cascade?.scoring ?? "Pioneer Gemma 4")
-            cascadeRow(icon: "sparkles", title: "Reasoning", model: cascade?.reasoning ?? "Gemini deep reasoning")
-            if let gate = cascade?.geminiGate {
-                Text("Gate: \(gate)").font(.caption2).foregroundStyle(AppTheme.slateMuted)
-            }
-        }
-        .cardStyle()
-    }
-
-    private func cascadeRow(icon: String, title: String, model: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon).foregroundStyle(AppTheme.deepTeal)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.caption.weight(.semibold)).foregroundStyle(AppTheme.slateMuted)
-                Text(model).font(.subheadline.weight(.medium)).foregroundStyle(AppTheme.slateInk)
-            }
-            Spacer()
-        }
-    }
-
-    private var apiCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("Backend", systemImage: "network")
-                .font(.subheadline.weight(.semibold))
-            HStack {
-                Text("API base URL")
-                    .font(.subheadline)
-                Spacer()
-                Text(AppConfig.apiBaseURL.absoluteString)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(AppTheme.slateMuted)
-            }
-            HStack {
-                Text("Realtime URL")
-                    .font(.subheadline)
-                Spacer()
-                Text(AppConfig.realtimeBaseURL.absoluteString)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(AppTheme.slateMuted)
-            }
-            HStack {
-                Text("Realtime")
-                    .font(.subheadline)
-                Spacer()
-                Text(realtime.isConnected ? "Connected" : "Disconnected")
-                    .font(.caption.weight(.bold)).monospaced()
-                    .padding(.horizontal, 6).padding(.vertical, 3)
-                    .background((realtime.isConnected ? AppTheme.success : AppTheme.amberAlert).opacity(0.15))
-                    .foregroundStyle(realtime.isConnected ? AppTheme.success : AppTheme.amberAlert)
-                    .clipShape(Capsule())
-            }
-            HStack {
-                Text("Mode")
-                    .font(.subheadline)
-                Spacer()
-                Text(radar.snapshot?.integrations?.mode.uppercased() ?? "—")
-                    .font(.caption.weight(.bold)).monospaced()
-                    .padding(.horizontal, 6).padding(.vertical, 3)
-                    .background(AppTheme.teal.opacity(0.15))
-                    .foregroundStyle(AppTheme.deepTeal)
-                    .clipShape(Capsule())
-            }
-        }
-        .cardStyle()
-    }
-
-    private var diagnosticsCard: some View {
+    /// Merged backend-URL + integration-status card. The dev "what is it
+    /// talking to" and the live "is it actually answering" live together so
+    /// the user can correlate an outage with a config in one screen.
+    private var systemStatusCard: some View {
         let integrations = radar.snapshot?.integrations
-        return VStack(alignment: .leading, spacing: 8) {
-            Label("Integration status", systemImage: "checkmark.shield.fill")
-                .font(.subheadline.weight(.semibold))
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("System", systemImage: "network")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                modePill(integrations?.mode)
+            }
+            row("API", value: AppConfig.apiBaseURL.absoluteString, mono: true)
+            row("Realtime", value: AppConfig.realtimeBaseURL.absoluteString, mono: true)
+            connectionRow(realtime: realtime)
+            Divider()
+            Text("INTEGRATIONS")
+                .font(.caption2.weight(.bold))
+                .tracking(0.6)
+                .foregroundStyle(AppTheme.slateMuted)
             diagRow("Clerk", on: integrations?.clerk ?? false)
             diagRow("Database", on: integrations?.database ?? false)
             diagRow("Tavily", on: integrations?.tavily ?? false)
@@ -153,18 +92,6 @@ struct SettingsView: View {
             diagRow("Gemini", on: integrations?.gemini ?? false)
         }
         .cardStyle()
-    }
-
-    private func diagRow(_ label: String, on: Bool) -> some View {
-        HStack {
-            Image(systemName: on ? "checkmark.circle.fill" : "xmark.circle")
-                .foregroundStyle(on ? AppTheme.success : AppTheme.slateMuted)
-            Text(label).font(.subheadline)
-            Spacer()
-            Text(on ? "Configured" : "Not configured")
-                .font(.caption)
-                .foregroundStyle(AppTheme.slateMuted)
-        }
     }
 
     private var approvalsCard: some View {
@@ -235,6 +162,58 @@ struct SettingsView: View {
         }
         .cardStyle()
     }
+
+    // MARK: - Row helpers
+
+    private func row(_ label: String, value: String, mono: Bool = false) -> some View {
+        HStack(alignment: .top) {
+            Text(label)
+                .font(.subheadline)
+                .frame(width: 76, alignment: .leading)
+            Text(value)
+                .font(mono ? .caption.monospaced() : .caption)
+                .foregroundStyle(AppTheme.slateMuted)
+                .multilineTextAlignment(.trailing)
+        }
+    }
+
+    private func connectionRow(realtime: RealtimeClient) -> some View {
+        HStack {
+            Text("Realtime")
+                .font(.subheadline)
+                .frame(width: 76, alignment: .leading)
+            Spacer()
+            Text(realtime.isConnected ? "Connected" : "Disconnected")
+                .font(.caption.weight(.bold)).monospaced()
+                .padding(.horizontal, 6).padding(.vertical, 3)
+                .background((realtime.isConnected ? AppTheme.success : AppTheme.amberAlert).opacity(0.15))
+                .foregroundStyle(realtime.isConnected ? AppTheme.success : AppTheme.amberAlert)
+                .clipShape(Capsule())
+        }
+    }
+
+    private func modePill(_ mode: String?) -> some View {
+        Text((mode ?? "—").uppercased())
+            .font(.caption2.weight(.bold)).monospaced()
+            .padding(.horizontal, 6).padding(.vertical, 3)
+            .background(AppTheme.teal.opacity(0.15))
+            .foregroundStyle(AppTheme.deepTeal)
+            .clipShape(Capsule())
+    }
+
+    private func diagRow(_ label: String, on: Bool) -> some View {
+        HStack {
+            Image(systemName: on ? "checkmark.circle.fill" : "xmark.circle")
+                .foregroundStyle(on ? AppTheme.success : AppTheme.slateMuted)
+            Text(label).font(.subheadline)
+            Spacer()
+            Text(on ? "Configured" : "Not configured")
+                .font(.caption)
+                .foregroundStyle(AppTheme.slateMuted)
+        }
+    }
+
+    // MARK: - Identity
 
     private var name: String {
         let first = clerk.user?.firstName ?? ""

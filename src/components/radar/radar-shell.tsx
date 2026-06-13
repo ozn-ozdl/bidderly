@@ -14,7 +14,6 @@ import { useUserState } from "@/components/realtime/user-state-provider";
 
 import { RadarSidebar, type SidebarKey } from "./sidebar";
 import { RadarHeaderBar } from "./header-bar";
-import { RadarMetricStrip } from "./metric-strip";
 import { RadarView } from "./views/radar-view";
 import { PipelineView } from "./views/pipeline-view";
 import { ApprovalsView } from "./views/approvals-view";
@@ -232,18 +231,11 @@ export function RadarShell({ initialSnapshot, integrationStatus }: RadarShellPro
           />
 
           <div className="mx-auto w-full max-w-[1480px] space-y-5 px-4 py-5 pb-20 sm:px-6 lg:px-8 lg:pb-8">
-            <RadarMetricStrip snapshot={snapshot} pendingApprovals={pendingApprovals} />
-
             {activeView === "radar" ? (
               <RadarView
                 snapshot={snapshot}
-                selectedFindingId={selectedFindingId}
-                onSelect={(id) => {
-                  setSelectedFindingId(id);
-                  setDrawerOpen(true);
-                }}
-                approvalStatuses={mergedApprovalStatuses}
-                onApprovalChange={updateApproval}
+                pendingCount={pendingApprovals.length}
+                onOpenApprovals={() => setActiveView("approvals")}
               />
             ) : null}
 
@@ -260,6 +252,10 @@ export function RadarShell({ initialSnapshot, integrationStatus }: RadarShellPro
                 approvals={snapshot.approvals}
                 approvalStatuses={approvalStatuses}
                 onApprovalChange={updateApproval}
+                onOpenDetail={(findingId) => {
+                  setSelectedFindingId(findingId);
+                  setDrawerOpen(true);
+                }}
                 onReset={resetApprovals}
                 isResetting={isResetting}
                 findings={snapshot.findings}

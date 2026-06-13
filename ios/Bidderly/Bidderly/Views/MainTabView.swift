@@ -3,12 +3,14 @@ import SwiftUI
 struct MainTabView: View {
     @Environment(RadarClient.self) private var radar
     @Environment(AlarmManager.self) private var alarm
+    @Environment(UserStateStore.self) private var userState
+    @Environment(RealtimeClient.self) private var realtime
 
     @State private var selection = 0
 
     var body: some View {
         TabView(selection: $selection) {
-            DashboardView()
+            DashboardView(onOpenApprovals: { selection = 3 })
                 .tabItem { Label("Radar", systemImage: "dot.radiowaves.left.and.right") }
                 .tag(0)
 
@@ -35,6 +37,7 @@ struct MainTabView: View {
         .tint(AppTheme.deepTeal)
         .overlay(alarmOverlay)
         .task {
+            realtime.connect()
             await alarm.requestPermissionsIfNeeded()
             await radar.refresh()
             checkPendingAlarms()
@@ -51,11 +54,14 @@ struct MainTabView: View {
             await radar.refresh()
             checkPendingAlarms()
         }
+        .onDisappear {
+            realtime.disconnect()
+        }
     }
 
     private func checkPendingAlarms() {
         guard radar.snapshot != nil else { return }
-        if let first = radar.pendingApprovals().first(where: { $0.alertEligible }) {
+        if let first = radar.pendingApprovals().first(where: { $0.alertEligible && !userState.isDismissed(findingId: $0.findingId) }) {
             let title = radar.bundle(forFinding: first.findingId)?.finding.title
             alarm.raise(for: first, findingTitle: title)
         }
@@ -68,7 +74,7 @@ struct MainTabView: View {
                 alarm: active,
                 onApprove: handleApprove,
                 onNeedsInfo: handleNeedsInfo,
-                onDismiss: { alarm.dismiss() }
+                onDismiss: handleDismiss
             )
             .transition(.opacity)
         }
@@ -86,5 +92,12 @@ struct MainTabView: View {
         radar.update(approvalId: id, status: .needsInfo)
         alarm.dismiss()
         selection = 3
+    }
+
+    private func handleDismiss() {
+        if let findingId = alarm.activeAlarm?.findingId {
+            realtime.setDismissed(findingId: findingId, dismissed: true)
+        }
+        alarm.dismiss()
     }
 }
