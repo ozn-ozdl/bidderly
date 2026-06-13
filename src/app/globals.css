@@ -195,6 +195,12 @@ button:disabled {
   cursor: not-allowed;
 }
 
+/* Dark surface always carries light text. Unlayered so it wins over
+   @layer utilities regardless of layer/custom-property resolution. */
+.bg-ink {
+  color: var(--bg);
+}
+
 ::selection {
   background: var(--accent);
   color: var(--bg);
