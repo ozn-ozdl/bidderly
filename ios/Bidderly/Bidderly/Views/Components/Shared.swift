@@ -82,10 +82,10 @@ struct ErrorCard: View {
                 .foregroundStyle(AppTheme.danger)
             Text("Couldn't reach the radar API")
                 .font(.headline)
-                .foregroundStyle(AppTheme.slateInk)
+                .appInk()
             Text(message)
                 .font(.subheadline)
-                .foregroundStyle(AppTheme.slateMuted)
+                .appMuted()
                 .multilineTextAlignment(.center)
             Button(action: onRetry) {
                 Label("Retry", systemImage: "arrow.clockwise")
@@ -97,7 +97,7 @@ struct ErrorCard: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity)
-        .background(AppTheme.surfaceCard)
+        .appSurface()
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .shadow(color: Color.black.opacity(0.05), radius: 8, y: 3)
     }

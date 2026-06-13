@@ -51,12 +51,12 @@ struct LocationMapCard: View {
                 if let distanceKm {
                     Text("\(Geo.formatDistance(distanceKm)) from \(homeLabel)")
                         .font(.caption2.monospaced())
-                        .foregroundStyle(AppTheme.slateMuted)
+                        .appMuted()
                 }
             }
             Text(location)
                 .font(.subheadline)
-                .foregroundStyle(AppTheme.slateInk)
+                .appInk()
 
             if let tender {
                 Map(initialPosition: .region(region), interactionModes: [.pan, .zoom]) {
@@ -82,7 +82,7 @@ struct LocationMapCard: View {
             } else {
                 Text("No coordinates for this location.")
                     .font(.caption)
-                    .foregroundStyle(AppTheme.slateMuted)
+                    .appMuted()
                     .frame(maxWidth: .infinity, minHeight: 80, alignment: .leading)
             }
         }

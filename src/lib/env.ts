@@ -65,6 +65,10 @@ export function shouldUseFixtureMode() {
   return status.mode !== "live-ready";
 }
 
+export function isRealtimeConfigured() {
+  return Boolean(process.env.NEXT_PUBLIC_REALTIME_URL);
+}
+
 export function requireCronSecret(request: Request) {
   const expected = process.env.SCOUT_CRON_SECRET;
 

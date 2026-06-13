@@ -10,17 +10,9 @@ struct MainTabView: View {
 
     var body: some View {
         TabView(selection: $selection) {
-            DashboardView(onOpenApprovals: { selection = 3 })
+            RadarView(onOpenApprovals: { selection = 1 })
                 .tabItem { Label("Radar", systemImage: "dot.radiowaves.left.and.right") }
                 .tag(0)
-
-            FindingsView()
-                .tabItem { Label("Findings", systemImage: "doc.text.magnifyingglass") }
-                .tag(1)
-
-            OpportunitiesView()
-                .tabItem { Label("Opportunities", systemImage: "gauge.with.dots.needle.50percent") }
-                .tag(2)
 
             ApprovalsView()
                 .tabItem {
@@ -28,11 +20,11 @@ struct MainTabView: View {
                     Label("Approvals", systemImage: pending > 0 ? "bell.badge.fill" : "bell")
                         .badge(pending)
                 }
-                .tag(3)
+                .tag(1)
 
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "gearshape") }
-                .tag(4)
+                .tag(2)
         }
         .tint(AppTheme.deepTeal)
         .overlay(alarmOverlay)
@@ -84,14 +76,14 @@ struct MainTabView: View {
         guard let id = alarm.activeAlarm?.id else { return }
         radar.update(approvalId: id, status: .approved)
         alarm.dismiss()
-        selection = 3
+        selection = 1
     }
 
     private func handleNeedsInfo() {
         guard let id = alarm.activeAlarm?.id else { return }
         radar.update(approvalId: id, status: .needsInfo)
         alarm.dismiss()
-        selection = 3
+        selection = 1
     }
 
     private func handleDismiss() {

@@ -58,15 +58,15 @@ struct AlarmSheet: View {
                         if let finding = alarm.findingTitle {
                             Text(finding)
                                 .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(AppTheme.slateMuted)
+                                .appMuted()
                                 .textCase(.uppercase)
                         }
                         Text(alarm.title)
                             .font(.title3.weight(.semibold))
-                            .foregroundStyle(AppTheme.slateInk)
+                            .appInk()
                         Text(alarm.detail)
                             .font(.subheadline)
-                            .foregroundStyle(AppTheme.slateMuted)
+                            .appMuted()
                             .fixedSize(horizontal: false, vertical: true)
 
                         if let due = alarm.dueAt {
@@ -88,13 +88,13 @@ struct AlarmSheet: View {
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 12)
                                     .background(Color.gray.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                    .foregroundStyle(AppTheme.slateInk)
+                                    .appInk()
                             }
                         }
                     }
                     .padding()
                 }
-                .background(AppTheme.surfaceCard)
+                .appSurface()
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .padding(.horizontal, 24)
                 .padding(.bottom, 36)

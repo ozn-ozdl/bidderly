@@ -57,6 +57,7 @@ final class AlarmManager: NSObject {
             title: approval.title,
             detail: approval.requestedAction,
             dueAt: ISO8601DateFormatter().date(from: approval.dueAt),
+            findingId: approval.findingId,
             findingTitle: findingTitle
         )
         activeAlarm = alarm
@@ -76,6 +77,7 @@ final class AlarmManager: NSObject {
             title: event.title,
             detail: event.detail,
             dueAt: ISO8601DateFormatter().date(from: event.at),
+            findingId: event.findingId,
             findingTitle: findingTitle
         )
         activeAlarm = alarm
@@ -172,5 +174,6 @@ struct Alarm: Identifiable {
     let title: String
     let detail: String
     let dueAt: Date?
+    let findingId: String?
     let findingTitle: String?
 }

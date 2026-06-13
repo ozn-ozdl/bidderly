@@ -4,24 +4,20 @@ struct ActivityView: View {
     @Environment(RadarClient.self) private var radar
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                if radar.liveEvents.isEmpty {
-                    EmptyStateView(icon: "clock.arrow.circlepath", title: "No events yet", message: "Run a scout to see the cascade in action.")
-                        .padding()
-                } else {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(radar.liveEvents.enumerated()), id: \.element.id) { index, event in
-                            ActivityRow(event: event, isFirst: index == 0, isLast: index == radar.liveEvents.count - 1)
-                        }
-                    }
+        ScrollView {
+            if radar.liveEvents.isEmpty {
+                EmptyStateView(icon: "clock.arrow.circlepath", title: "No events yet", message: "Run a scout to see the cascade in action.")
                     .padding()
+            } else {
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(radar.liveEvents.enumerated()), id: \.element.id) { index, event in
+                        ActivityRow(event: event, isFirst: index == 0, isLast: index == radar.liveEvents.count - 1)
+                    }
                 }
+                .padding()
             }
-            .background(AppTheme.slateBackground)
-            .navigationTitle("Activity")
-            .navigationBarTitleDisplayMode(.large)
         }
+        .appBackground()
     }
 }
 
@@ -68,14 +64,14 @@ struct ActivityRow: View {
             }
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text(event.title).font(.subheadline.weight(.semibold)).foregroundStyle(AppTheme.slateInk)
+                    Text(event.title).font(.subheadline.weight(.semibold)).appInk()
                     Spacer()
                     Text(RelativeDateFormatter.shared.string(from: event.at))
-                        .font(.caption2.monospacedDigit()).foregroundStyle(AppTheme.slateMuted)
+                        .font(.caption2.monospacedDigit()).appMuted()
                 }
                 Text(event.detail)
                     .font(.caption)
-                    .foregroundStyle(AppTheme.slateMuted)
+                    .appMuted()
                     .fixedSize(horizontal: false, vertical: true)
                 Text(event.role.replacingOccurrences(of: "_", with: " ").uppercased())
                     .font(.caption2.weight(.bold))
@@ -90,7 +86,10 @@ struct ActivityRow: View {
 
 #if DEBUG
 #Preview("Activity · live feed") {
-    ActivityView()
-        .previewEnvironments()
+    NavigationStack {
+        ActivityView()
+            .navigationTitle("Cascade log")
+    }
+    .previewEnvironments()
 }
 #endif

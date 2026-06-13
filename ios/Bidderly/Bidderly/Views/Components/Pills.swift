@@ -183,18 +183,18 @@ struct MetricTile: View {
             }
             Text(value)
                 .font(.system(.title2, design: .rounded).weight(.bold))
-                .foregroundStyle(AppTheme.slateInk)
+                .appInk()
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
             Text(title)
                 .font(.caption)
-                .foregroundStyle(AppTheme.slateMuted)
+                .appMuted()
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(AppTheme.surfaceCard)
+        .appSurface()
         .clipShape(AppTheme.cardStyle)
         .shadow(color: Color.black.opacity(0.04), radius: 6, y: 2)
     }
@@ -211,11 +211,11 @@ struct EmptyStateView: View {
         VStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 38, weight: .light))
-                .foregroundStyle(AppTheme.slateMuted)
+                .appMuted()
             Text(title).font(.headline)
             Text(message)
                 .font(.subheadline)
-                .foregroundStyle(AppTheme.slateMuted)
+                .appMuted()
                 .multilineTextAlignment(.center)
         }
         .padding(40)

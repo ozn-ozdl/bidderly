@@ -17,7 +17,7 @@ struct SourcesView: View {
                     ProgressView().frame(maxWidth: .infinity, minHeight: 200)
                 }
             }
-            .background(AppTheme.slateBackground)
+            .appBackground()
             .navigationTitle("Sources")
             .navigationBarTitleDisplayMode(.large)
         }
@@ -45,21 +45,21 @@ private struct SourceCard: View {
                     Image(systemName: typeIcon).foregroundStyle(AppTheme.deepTeal)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(source.name).font(.subheadline.weight(.semibold)).foregroundStyle(AppTheme.slateInk)
-                    Text(source.geography).font(.caption).foregroundStyle(AppTheme.slateMuted)
+                    Text(source.name).font(.subheadline.weight(.semibold)).appInk()
+                    Text(source.geography).font(.caption).appMuted()
                 }
                 Spacer()
                 SourceStatusDot(status: source.status)
             }
             HStack(spacing: 16) {
-                Label(source.cadence, systemImage: "clock").font(.caption.weight(.semibold)).foregroundStyle(AppTheme.slateInk)
-                Label("\(source.findingsToday) today", systemImage: "doc.text").font(.caption.weight(.semibold)).foregroundStyle(AppTheme.slateInk)
+                Label(source.cadence, systemImage: "clock").font(.caption.weight(.semibold)).appInk()
+                Label("\(source.findingsToday) today", systemImage: "doc.text").font(.caption.weight(.semibold)).appInk()
                 Spacer()
             }
             if let lastChecked = ISO8601DateFormatter().date(from: source.lastCheckedAt) {
                 Text("Last checked \(lastChecked.formatted(date: .abbreviated, time: .shortened))")
                     .font(.caption2.monospacedDigit())
-                    .foregroundStyle(AppTheme.slateMuted)
+                    .appMuted()
             }
         }
         .padding(14)

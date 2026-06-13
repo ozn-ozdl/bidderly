@@ -18,10 +18,11 @@ struct SettingsView: View {
                     systemStatusCard
                     approvalsCard
                     alarmCard
+                    cascadeLogCard
                 }
                 .padding()
             }
-            .background(AppTheme.slateBackground)
+            .appBackground()
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.large)
             .alert("Reset all approval requests?", isPresented: $confirmReset) {
@@ -53,8 +54,8 @@ struct SettingsView: View {
                         .font(.headline).foregroundStyle(.white)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(name).font(.subheadline.weight(.semibold)).foregroundStyle(AppTheme.slateInk)
-                    Text(email).font(.caption).foregroundStyle(AppTheme.slateMuted)
+                    Text(name).font(.subheadline.weight(.semibold)).appInk()
+                    Text(email).font(.caption).appMuted()
                 }
                 Spacer()
                 UserButton()
@@ -83,7 +84,7 @@ struct SettingsView: View {
             Text("INTEGRATIONS")
                 .font(.caption2.weight(.bold))
                 .tracking(0.6)
-                .foregroundStyle(AppTheme.slateMuted)
+                .appMuted()
             diagRow("Clerk", on: integrations?.clerk ?? false)
             diagRow("Database", on: integrations?.database ?? false)
             diagRow("Tavily", on: integrations?.tavily ?? false)
@@ -105,10 +106,10 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Reset approval requests")
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(AppTheme.slateInk)
+                        .appInk()
                     Text("Sends every decision back to pending on the server and on this device.")
                         .font(.caption)
-                        .foregroundStyle(AppTheme.slateMuted)
+                        .appMuted()
                 }
                 Spacer()
             }
@@ -163,6 +164,41 @@ struct SettingsView: View {
         .cardStyle()
     }
 
+    /// Power-user surface for the cascade's event log. Not the primary
+    /// decision path — the Approvals tab owns that. Lives here so the
+    /// Radar scroll stays focused on "what needs me" / "what qualified".
+    private var cascadeLogCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Cascade log", systemImage: "clock.arrow.circlepath")
+                .font(.subheadline.weight(.semibold))
+            Text("The cascade's recent events. Power-user view, not the primary surface.")
+                .font(.caption)
+                .appMuted()
+                .fixedSize(horizontal: false, vertical: true)
+            NavigationLink {
+                ActivityView()
+                    .navigationTitle("Cascade log")
+            } label: {
+                HStack {
+                    Text("Open cascade log")
+                        .appInk()
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .appMuted()
+                }
+                .font(.subheadline.weight(.semibold))
+                .padding(.vertical, 10)
+                .padding(.horizontal, 12)
+                .frame(maxWidth: .infinity)
+                .appSurface()
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain)
+        }
+        .cardStyle()
+    }
+
     // MARK: - Row helpers
 
     private func row(_ label: String, value: String, mono: Bool = false) -> some View {
@@ -172,7 +208,7 @@ struct SettingsView: View {
                 .frame(width: 76, alignment: .leading)
             Text(value)
                 .font(mono ? .caption.monospaced() : .caption)
-                .foregroundStyle(AppTheme.slateMuted)
+                .appMuted()
                 .multilineTextAlignment(.trailing)
         }
     }
@@ -209,7 +245,7 @@ struct SettingsView: View {
             Spacer()
             Text(on ? "Configured" : "Not configured")
                 .font(.caption)
-                .foregroundStyle(AppTheme.slateMuted)
+                .appMuted()
         }
     }
 

@@ -25,7 +25,7 @@ struct FindingDetailView: View {
             }
             .padding()
         }
-        .background(AppTheme.slateBackground)
+        .appBackground()
         .navigationTitle("Finding detail")
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -44,7 +44,7 @@ struct FindingDetailView: View {
             }
             Text(bundle.finding.title)
                 .font(.title3.weight(.semibold))
-                .foregroundStyle(AppTheme.slateInk)
+                .appInk()
             HStack(spacing: 6) {
                 Image(systemName: "globe").font(.caption)
                 Text(bundle.finding.sourceName).font(.caption)
@@ -53,9 +53,9 @@ struct FindingDetailView: View {
                 Spacer()
                 Text(RelativeDateFormatter.shared.string(from: bundle.finding.publishedAt))
                     .font(.caption2.monospacedDigit())
-                    .foregroundStyle(AppTheme.slateMuted)
+                    .appMuted()
             }
-            .foregroundStyle(AppTheme.slateMuted)
+            .appMuted()
             Link(destination: URL(string: bundle.finding.url) ?? URL(string: "https://example.com")!) {
                 Label("Open source page", systemImage: "arrow.up.right.square")
                     .font(.subheadline.weight(.semibold))
@@ -79,7 +79,7 @@ struct FindingDetailView: View {
             }
             Text(extraction.model)
                 .font(.caption2.monospaced())
-                .foregroundStyle(AppTheme.slateMuted)
+                .appMuted()
 
             Group {
                 entityLine("Buyer", extraction.entities.buyerIssuer)
@@ -112,10 +112,10 @@ struct FindingDetailView: View {
             }
             Text(score.model)
                 .font(.caption2.monospaced())
-                .foregroundStyle(AppTheme.slateMuted)
+                .appMuted()
             Text(score.rationale)
                 .font(.subheadline)
-                .foregroundStyle(AppTheme.slateInk)
+                .appInk()
                 .fixedSize(horizontal: false, vertical: true)
         }
         .cardStyle()
@@ -135,32 +135,32 @@ struct FindingDetailView: View {
             }
             Text(gemini.model)
                 .font(.caption2.monospaced())
-                .foregroundStyle(AppTheme.slateMuted)
+                .appMuted()
             Text(gemini.summary)
                 .font(.subheadline)
-                .foregroundStyle(AppTheme.slateInk)
+                .appInk()
             if !gemini.recommendedNextSteps.isEmpty {
-                Text("Recommended next steps").font(.caption.weight(.semibold)).foregroundStyle(AppTheme.slateMuted)
+                Text("Recommended next steps").font(.caption.weight(.semibold)).appMuted()
                 ForEach(gemini.recommendedNextSteps, id: \.self) { step in
                     HStack(alignment: .top, spacing: 6) {
                         Image(systemName: "arrowtriangle.right.fill").font(.caption).foregroundStyle(AppTheme.teal)
-                        Text(step).font(.subheadline).foregroundStyle(AppTheme.slateInk)
+                        Text(step).font(.subheadline).appInk()
                     }
                 }
             }
             if !gemini.risks.isEmpty {
-                Text("Risks").font(.caption.weight(.semibold)).foregroundStyle(AppTheme.slateMuted)
+                Text("Risks").font(.caption.weight(.semibold)).appMuted()
                 ForEach(gemini.risks, id: \.self) { risk in
                     HStack(alignment: .top, spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(AppTheme.amberAlert)
-                        Text(risk).font(.subheadline).foregroundStyle(AppTheme.slateInk)
+                        Text(risk).font(.subheadline).appInk()
                     }
                 }
             }
             if let blocker = gemini.blocker {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "lock.fill").foregroundStyle(AppTheme.amberAlert)
-                    Text(blocker).font(.subheadline.weight(.semibold)).foregroundStyle(AppTheme.slateInk)
+                    Text(blocker).font(.subheadline.weight(.semibold)).appInk()
                 }
                 .padding(10)
                 .background(AppTheme.amberAlert.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -200,8 +200,8 @@ struct FindingDetailView: View {
                 Spacer()
                 ApprovalStatusBadge(status: radarStatus(approval))
             }
-            Text(approval.blocker).font(.subheadline).foregroundStyle(AppTheme.slateInk)
-            Text(approval.requestedAction).font(.subheadline).foregroundStyle(AppTheme.slateMuted)
+            Text(approval.blocker).font(.subheadline).appInk()
+            Text(approval.requestedAction).font(.subheadline).appMuted()
             if radarStatus(approval) == .pending {
                 HStack(spacing: 10) {
                     Button {
@@ -221,7 +221,7 @@ struct FindingDetailView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
                             .background(Color.gray.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .foregroundStyle(AppTheme.slateInk)
+                            .appInk()
                             .font(.subheadline.weight(.semibold))
                     }
                 }
@@ -236,7 +236,7 @@ struct FindingDetailView: View {
                 .font(.subheadline.weight(.semibold))
             Text(bundle.finding.rawText)
                 .font(.subheadline)
-                .foregroundStyle(AppTheme.slateMuted)
+                .appMuted()
                 .fixedSize(horizontal: false, vertical: true)
         }
         .cardStyle()
@@ -247,10 +247,10 @@ struct FindingDetailView: View {
             Text(label.uppercased())
                 .font(.caption2.weight(.semibold))
                 .frame(width: 80, alignment: .leading)
-                .foregroundStyle(AppTheme.slateMuted)
+                .appMuted()
             Text(value ?? "—")
                 .font(.subheadline.weight(.medium))
-                .foregroundStyle(AppTheme.slateInk)
+                .appInk()
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }

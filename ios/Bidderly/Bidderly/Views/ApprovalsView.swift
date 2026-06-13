@@ -31,7 +31,7 @@ struct ApprovalsView: View {
                                         .padding(.horizontal)
                                 }
                             } header: {
-                                Text("Recently decided").font(.subheadline.weight(.semibold)).foregroundStyle(AppTheme.slateMuted)
+                                Text("Recently decided").font(.subheadline.weight(.semibold)).appMuted()
                                     .padding(.horizontal).padding(.top)
                             }
                         }
@@ -41,7 +41,7 @@ struct ApprovalsView: View {
                     ProgressView().frame(maxWidth: .infinity, minHeight: 200)
                 }
             }
-            .background(AppTheme.slateBackground)
+            .appBackground()
             .navigationTitle("Approvals")
             .navigationBarTitleDisplayMode(.large)
         }
@@ -104,7 +104,7 @@ struct ApprovalCard: View {
         HStack {
             Label("Human escalation", systemImage: "person.crop.circle.badge.exclamationmark")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(AppTheme.slateMuted)
+                .appMuted()
             Spacer()
             ApprovalStatusBadge(status: status)
         }
@@ -114,7 +114,7 @@ struct ApprovalCard: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(approval.title)
                 .font(.headline)
-                .foregroundStyle(AppTheme.slateInk)
+                .appInk()
             HStack(alignment: .top, spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.caption)
@@ -137,11 +137,13 @@ struct ApprovalCard: View {
 
     /// "What the cascade found" — exactly the GLiNER2 / Gemma 4 / Gemini output
     /// for this specific approval's finding, shown as a compact 3-row list.
+    @Environment(\.colorScheme) private var colorScheme
+
     private func cascadeSection(bundle: FindingBundle) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("What the cascade found")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(AppTheme.slateMuted)
+                .appMuted()
             cascadeRow(
                 icon: "text.magnifyingglass",
                 title: "GLiNER2",
@@ -166,7 +168,11 @@ struct ApprovalCard: View {
             )
         }
         .padding(10)
-        .background(AppTheme.slateBackground.opacity(0.5), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(
+            (colorScheme == .dark ? AppThemeDark.slateBackground : AppTheme.slateBackground)
+                .opacity(0.5),
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        )
     }
 
     private func cascadeRow(icon: String, title: String, detail: String) -> some View {
@@ -178,10 +184,10 @@ struct ApprovalCard: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(AppTheme.slateMuted)
+                    .appMuted()
                 Text(detail)
                     .font(.caption)
-                    .foregroundStyle(AppTheme.slateInk)
+                    .appInk()
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -197,7 +203,7 @@ struct ApprovalCard: View {
                     .foregroundStyle(tint)
                 Text(text)
                     .font(.subheadline)
-                    .foregroundStyle(AppTheme.slateInk)
+                    .appInk()
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -225,7 +231,7 @@ struct ApprovalCard: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
                     .background(Color.gray.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .foregroundStyle(AppTheme.slateInk)
+                    .appInk()
                     .font(.subheadline.weight(.semibold))
             }
         }
