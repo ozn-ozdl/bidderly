@@ -41,26 +41,40 @@ export class NegotiationError extends Error {
   }
 }
 
+function priceDeltaLabel(v: number): string {
+  if (v === 0) return "Hold price";
+  if (v > 0) return `+${v}%`;
+  return `${v}%`;
+}
+
+function maxOptionValue(key: TradeoffParameterKey): number {
+  return Math.max(...paramLibrary[key].options.map((option) => Number(option.value)));
+}
+
+function minOptionValue(key: TradeoffParameterKey): number {
+  return Math.min(...paramLibrary[key].options.map((option) => Number(option.value)));
+}
+
 const paramLibrary: Record<TradeoffParameterKey, Omit<TradeoffParameter, "key">> = {
   price_delta_pct: {
     label: "Price adjustment",
     kind: "percent",
-    options: [-15, -12, -10, -8, -5, -3, 0].map((v) => ({
+    options: [-15, -12, -10, -8, -5, -3, 0, 3, 5, 8, 10, 12, 15].map((v) => ({
       value: String(v),
-      label: v === 0 ? "Hold price" : `${v}%`,
+      label: priceDeltaLabel(v),
     })),
     defaultValue: "-5",
   },
   warranty_years: {
     label: "Warranty",
     kind: "enum",
-    options: [3, 5, 7, 10].map((v) => ({ value: String(v), label: `${v} yr` })),
+    options: [1, 2, 3, 5, 7, 10, 12, 15].map((v) => ({ value: String(v), label: `${v} yr` })),
     defaultValue: "5",
   },
   service_visits: {
     label: "Service visits / yr",
     kind: "count",
-    options: [0, 1, 2, 3, 4, 6].map((v) => ({
+    options: [0, 1, 2, 3, 4, 6, 8, 12].map((v) => ({
       value: String(v),
       label: v === 0 ? "No visits" : `${v} visits`,
     })),
@@ -69,7 +83,7 @@ const paramLibrary: Record<TradeoffParameterKey, Omit<TradeoffParameter, "key">>
   delivery_weeks: {
     label: "Delivery lead time",
     kind: "enum",
-    options: [4, 6, 8, 12, 16].map((v) => ({ value: String(v), label: `${v} weeks` })),
+    options: [2, 3, 4, 6, 8, 12, 16, 20, 24].map((v) => ({ value: String(v), label: `${v} weeks` })),
     defaultValue: "8",
   },
 };
@@ -143,11 +157,11 @@ function inferBuyerTerms(
     if (lever === "price_delta_pct") continue;
     const agentValue = Number(agentTerms[lever] ?? paramLibrary[lever].defaultValue);
     if (lever === "warranty_years") {
-      terms[lever] = String(Math.min(10, agentValue + (roll() > 0.5 ? 2 : 0)));
+      terms[lever] = String(Math.min(maxOptionValue(lever), agentValue + (roll() > 0.5 ? 2 : 0)));
     } else if (lever === "service_visits") {
-      terms[lever] = String(Math.min(6, agentValue + (roll() > 0.4 ? 1 : 0)));
+      terms[lever] = String(Math.min(maxOptionValue(lever), agentValue + (roll() > 0.4 ? 1 : 0)));
     } else if (lever === "delivery_weeks") {
-      terms[lever] = String(Math.max(4, agentValue - (roll() > 0.5 ? 2 : 0)));
+      terms[lever] = String(Math.max(minOptionValue(lever), agentValue - (roll() > 0.5 ? 2 : 0)));
     }
   }
   return terms;
@@ -726,7 +740,7 @@ async function optionsFor(
         `Buyer: ${buyer}`,
         `Buyer message: ${message}`,
         `Parsed buyer position: ${context}`,
-        "Price options must move toward but not below the buyer's referenced price when cutting price.",
+        "Price options may decrease toward the buyer's referenced price or increase when protecting margin while improving other terms.",
         "Return JSON {\"options\":[{\"title\":string,\"summary\":string,\"parameterKeys\":string[]}]}",
       ].join("\n"),
       {
@@ -771,6 +785,11 @@ async function optionsFor(
         title: "Hold price, add value",
         summary: "Hold price while improving warranty and service to match buyer levers.",
         parameterKeys: levers.includes("warranty_years") ? ["warranty_years", "service_visits"] : ["warranty_years", "service_visits"],
+      },
+      {
+        title: "Premium package",
+        summary: "Increase price while expanding warranty and service coverage.",
+        parameterKeys: ["price_delta_pct", "warranty_years", "service_visits"],
       },
     ];
   }

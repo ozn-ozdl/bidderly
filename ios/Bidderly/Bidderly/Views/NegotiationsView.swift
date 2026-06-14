@@ -65,6 +65,7 @@ struct NegotiationsView: View {
             .padding()
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+        .clipped()
     }
 
     private var headerCopy: some View {
@@ -281,6 +282,7 @@ private struct NegotiationDetailView: View {
                 value: detail.negotiation.agreedPrice.map(money) ?? "—"
             )
         }
+        .frame(maxWidth: .infinity)
     }
 
     private func loadDetail() async {

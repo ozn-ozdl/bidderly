@@ -10,8 +10,9 @@ struct DiffusionReveal: ViewModifier {
     func body(content: Content) -> some View {
         content
             .opacity(revealed ? 1 : 0.15)
-            .blur(radius: revealed ? 0 : 14)
             .scaleEffect(revealed ? 1 : 1.02)
+            .blur(radius: revealed ? 0 : 14)
+            .clipped()
             .onAppear { animateIn() }
             .onChange(of: trigger) { _, _ in
                 revealed = false
@@ -105,7 +106,9 @@ struct TermComparisonRow: View {
                     tint: AppTheme.amberAlert
                 )
             }
+            .frame(maxWidth: .infinity)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
         .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .diffusionReveal(trigger: "\(field.key)-\(field.agentDisplay ?? "")-\(field.counterpartyDisplay ?? "")")
@@ -151,42 +154,50 @@ struct OfferTrajectoryChart: View {
             HStack(spacing: 14) {
                 LegendDot(color: AppTheme.teal, label: "Your offer")
                 LegendDot(color: AppTheme.amberAlert, label: "Buyer position")
-                Spacer()
+                Spacer(minLength: 0)
                 if timeline.count > 1 {
                     Text("\(timeline.count) rounds")
                         .font(.caption2.monospaced())
                         .appMuted()
                 }
             }
+            .frame(maxWidth: .infinity)
 
-            GeometryReader { geo in
-                let allValues = agentSeries + counterpartySeries + [targetPrice]
-                let minV = (allValues.min() ?? 0) * 0.96
-                let maxV = (allValues.max() ?? 1) * 1.04
-                let range = max(maxV - minV, 1)
+            Color.clear
+                .frame(maxWidth: .infinity)
+                .frame(height: 140)
+                .overlay {
+                    GeometryReader { geo in
+                        let allValues = agentSeries + counterpartySeries + [targetPrice]
+                        let minV = (allValues.min() ?? 0) * 0.96
+                        let maxV = (allValues.max() ?? 1) * 1.04
+                        let range = max(maxV - minV, 1)
 
-                ZStack {
-                    targetLine(in: geo.size, minV: minV, range: range)
-                    gapArrows(in: geo.size, minV: minV, range: range)
-                    seriesPath(
-                        timeline.map(\.agentPrice),
-                        in: geo.size,
-                        minV: minV,
-                        range: range,
-                        color: AppTheme.teal
-                    )
-                    seriesPath(
-                        timeline.map(\.counterpartyPrice),
-                        in: geo.size,
-                        minV: minV,
-                        range: range,
-                        color: AppTheme.amberAlert
-                    )
+                        ZStack {
+                            targetLine(in: geo.size, minV: minV, range: range)
+                            gapArrows(in: geo.size, minV: minV, range: range)
+                            seriesPath(
+                                timeline.map(\.agentPrice),
+                                in: geo.size,
+                                minV: minV,
+                                range: range,
+                                color: AppTheme.teal
+                            )
+                            seriesPath(
+                                timeline.map(\.counterpartyPrice),
+                                in: geo.size,
+                                minV: minV,
+                                range: range,
+                                color: AppTheme.amberAlert
+                            )
+                        }
+                        .frame(width: geo.size.width, height: geo.size.height)
+                    }
                 }
-            }
-            .frame(height: 140)
-            .diffusionReveal(trigger: timeline.map(\.id).map(String.init).joined())
+                .clipped()
+                .diffusionReveal(trigger: timeline.map(\.id).map(String.init).joined())
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
@@ -306,6 +317,7 @@ struct NegotiationDashboardCard: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .clipped()
         .background(Color.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -364,7 +376,9 @@ struct ParsedOfferChips: View {
                     Chip(text: chip, tint: AppTheme.slateMuted)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var termChips: [String] {
