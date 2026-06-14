@@ -11,7 +11,10 @@ import { envFlag } from "@/lib/env";
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_BYTES = 200 * 1024;
 const DEFAULT_MAX_REDIRECTS = 3;
-const DEFAULT_QPS = 2;
+// High default so the mock-sites Railway service on localhost never
+// trips the per-host rate limiter. Real public procurement hosts
+// should set SCRAPER_QPS=2 (or similar) in the production env.
+const DEFAULT_QPS = 32;
 
 export type FetchPageOptions = {
   signal?: AbortSignal;
@@ -84,8 +87,16 @@ export async function fetchPage(
   const host = getHost(url);
   const qps = Number(process.env.SCRAPER_QPS ?? DEFAULT_QPS);
   if (!takeToken(host, qps)) {
-    // Back off 250ms and try once more.
-    await sleep(250, opts.signal);
+    // Back off and retry. The bucket refills at `qps` tokens/sec, so
+    // waiting ~1/qps seconds is enough to take the next token. We
+    // try a few times to absorb the per-request jitter of a small
+    // burst of concurrent workers, with a hard upper bound on total
+    // wait time so the scraper never hangs.
+    const perAttemptMs = Math.max(50, Math.ceil(1000 / Math.max(1, qps)));
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      await sleep(perAttemptMs, opts.signal);
+      if (takeToken(host, qps)) break;
+    }
     if (!takeToken(host, qps)) {
       throw new Error(`rate_limited:${host}`);
     }

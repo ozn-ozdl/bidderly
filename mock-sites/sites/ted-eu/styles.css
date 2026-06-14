@@ -1,0 +1,106 @@
+:root {
+  color-scheme: light;
+  --blue: #003399;
+  --yellow: #ffcc00;
+  --ink: #1a1a1a;
+  --muted: #5b6273;
+  --rule: #d8dce5;
+  --bg: #ffffff;
+  --bg-soft: #f4f6fa;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.55;
+  font-size: 15px;
+}
+
+header.ted-header {
+  background: var(--blue);
+  color: white;
+  border-bottom: 4px solid var(--yellow);
+}
+
+header.ted-header .wrap {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+header.ted-header .logo {
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  font-size: 1.5rem;
+}
+
+header.ted-header .logo .accent {
+  color: var(--yellow);
+}
+
+header.ted-header nav {
+  margin-left: auto;
+  display: flex;
+  gap: 1.5rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+header.ted-header nav a {
+  color: white;
+  text-decoration: none;
+  opacity: 0.9;
+}
+
+header.ted-header nav a:hover { opacity: 1; }
+
+main { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+
+h1 { font-size: 1.6rem; margin: 0 0 0.4rem; color: var(--blue); }
+h2 { font-size: 1.15rem; margin: 1.5rem 0 0.6rem; color: var(--blue); }
+p.lede { color: var(--muted); max-width: 70ch; margin: 0 0 1.5rem; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0 2rem;
+  font-size: 0.9rem;
+}
+
+th, td {
+  text-align: left;
+  padding: 0.6rem 0.5rem;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+
+th { background: var(--bg-soft); font-weight: 600; color: var(--ink); }
+
+a { color: var(--blue); }
+
+ul.meta { list-style: none; padding: 0; margin: 1rem 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.5rem 1.5rem; }
+ul.meta li { font-size: 0.9rem; }
+ul.meta li .label { color: var(--muted); display: block; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; }
+
+.box {
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--blue);
+  padding: 1rem 1.25rem;
+  margin: 1rem 0;
+  background: var(--bg-soft);
+}
+
+footer {
+  border-top: 1px solid var(--rule);
+  padding: 1.5rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-align: center;
+}

@@ -1,0 +1,100 @@
+:root {
+  color-scheme: light;
+  --ink: #1d1d1d;
+  --muted: #5b5b5b;
+  --rule: #d0d0d0;
+  --bg: #ffffff;
+  --bg-soft: #f5f5f5;
+  --bund: #ff0000;
+  --gold: #ffcb05;
+  --link: #003366;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.5;
+  font-size: 14px;
+}
+
+header.bund-header {
+  background: #1a1a1a;
+  color: white;
+  border-top: 6px solid var(--bund);
+}
+
+header.bund-header .wrap {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0.8rem 1.5rem;
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+}
+
+header.bund-header .logo {
+  font-weight: 700;
+  font-size: 1.2rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+header.bund-header .logo .accent { color: var(--gold); }
+
+header.bund-header .crumbs {
+  font-size: 0.78rem;
+  color: #b0b0b0;
+  margin-left: auto;
+}
+
+header.bund-header .crumbs a { color: #d0d0d0; text-decoration: none; }
+
+main { max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.5rem 3rem; }
+
+h1 { font-size: 1.4rem; margin: 0 0 0.4rem; }
+h2 { font-size: 1.05rem; margin: 1.2rem 0 0.4rem; border-bottom: 1px solid var(--rule); padding-bottom: 0.2rem; }
+
+dl { display: grid; grid-template-columns: 200px 1fr; gap: 0.3rem 1rem; margin: 0.5rem 0 1.5rem; }
+dt { font-weight: 700; }
+dd { margin: 0; }
+
+a { color: var(--link); }
+
+.notice {
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--bund);
+  padding: 0.6rem 1rem;
+  margin: 0.6rem 0;
+  background: var(--bg-soft);
+}
+
+ul.plain { padding-left: 1.25rem; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+
+th, td {
+  text-align: left;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--rule);
+  font-size: 0.85rem;
+  vertical-align: top;
+}
+
+th { background: var(--bg-soft); font-weight: 700; }
+
+footer {
+  border-top: 2px solid var(--bund);
+  margin-top: 2rem;
+  padding: 1rem 1.5rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-align: center;
+}
