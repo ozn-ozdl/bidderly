@@ -91,6 +91,7 @@ export type TrainingRequest =
       modelName: string;
       baseModel: string;
       datasetName: string;
+      datasetVersion?: string;
       trainingType?: "lora" | "full";
       nrEpochs?: number;
       learningRate?: number;
@@ -100,6 +101,7 @@ export type TrainingRequest =
       modelName: string;
       baseModel: string;
       datasetName: string;
+      datasetVersion?: string;
       trainingType?: "lora";
       trainingAlgorithm?: "sft" | "grpo" | "dpo";
       nrEpochs?: number;
@@ -122,7 +124,7 @@ export async function startTrainingJob(
       ? {
           model_name: req.modelName,
           base_model: req.baseModel,
-          datasets: [{ name: req.datasetName }],
+          datasets: [{ name: req.datasetName, version: req.datasetVersion ?? "1" }],
           training_type: req.trainingType ?? "lora",
           training_algorithm: req.trainingAlgorithm ?? "sft",
           nr_epochs: req.nrEpochs ?? 3,
@@ -131,7 +133,7 @@ export async function startTrainingJob(
       : {
           model_name: req.modelName,
           base_model: req.baseModel,
-          datasets: [{ name: req.datasetName }],
+          datasets: [{ name: req.datasetName, version: req.datasetVersion ?? "1" }],
           training_type: req.trainingType ?? "lora",
           nr_epochs: req.nrEpochs ?? 5,
           learning_rate: req.learningRate ?? 5e-5,
