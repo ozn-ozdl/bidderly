@@ -1,5 +1,19 @@
+// Provider client adapters.
+//
+// Three external surfaces are called from the cascade:
+//
+//   1. Tavily  — search / enrichment for raw tender URLs.
+//   2. Pioneer — fine-tuned GLiNER2 extraction + clue tagging, and
+//                Gemma 4 scoring. The actual API calls live in
+//                src/lib/pioneer/inference.ts; this module is the
+//                thin façade that maps Pioneer output to the typed
+//                shapes the cascade consumes.
+//   3. Gemini  — final reasoning step, called only when the cascade
+//                gate is open.
+
 import { z } from "zod";
 
+import { inferExtractionAndClues, inferScoring } from "@/lib/pioneer";
 import type {
   Extraction,
   Finding,
@@ -8,22 +22,9 @@ import type {
   ProcurementClue,
   RouteDecision,
   Urgency,
-} from "./radar-types";
+} from "@/lib/radar-types";
 
-const clueSchema = z.enum([
-  "budget_approved",
-  "supplier_call",
-  "pre_announcement",
-  "official_tender",
-  "deadline_near",
-  "login_required",
-  "event_notice",
-  "duplicate",
-  "expired",
-]);
-
-const routeSchema = z.enum(["ignore", "monitor", "qualify", "human_review"]);
-const urgencySchema = z.enum(["low", "medium", "high"]);
+// --- Tavily ---------------------------------------------------------------
 
 const tavilyResultSchema = z.object({
   title: z.string().optional(),
@@ -35,46 +36,6 @@ const tavilyResultSchema = z.object({
 
 const tavilyResponseSchema = z.object({
   results: z.array(tavilyResultSchema).default([]),
-});
-
-const glinerResponseSchema = z.object({
-  confidence: z.coerce.number().min(0).max(1).default(0.75),
-  entities: z
-    .object({
-      buyerIssuer: z.string().optional(),
-      projectName: z.string().optional(),
-      category: z.string().optional(),
-      location: z.string().optional(),
-      deadline: z.string().optional(),
-      budgetValue: z.string().optional(),
-      contactPersona: z.string().optional(),
-    })
-    .default({}),
-  clueTags: z.array(clueSchema).default([]),
-  spans: z
-    .array(
-      z.object({
-        label: z.string(),
-        text: z.string(),
-        start: z.coerce.number(),
-        end: z.coerce.number(),
-      }),
-    )
-    .default([]),
-});
-
-const gemmaResponseSchema = z.object({
-  worthOutreachScore: z.coerce.number().min(0).max(100),
-  urgency: urgencySchema,
-  route: routeSchema,
-  rationale: z.string().min(1),
-});
-
-const geminiResponseSchema = z.object({
-  summary: z.string().min(1),
-  risks: z.array(z.string()).default([]),
-  recommendedNextSteps: z.array(z.string()).default([]),
-  blocker: z.string().optional(),
 });
 
 export async function searchTenderSignals() {
@@ -130,57 +91,58 @@ export async function searchTenderSignals() {
   });
 }
 
+// --- Pioneer (extraction + clues, multi-head) -----------------------------
+
+// The model emits label strings in snake_case; map each into the
+// ExtractedEntities shape the cascade consumes. The mapping is
+// forward-only — anything we don't recognise is dropped to keep the
+// typed shape stable.
+const ENTITY_LABEL_TO_FIELD: Record<string, keyof Extraction["entities"]> = {
+  buyer_issuer: "buyerIssuer",
+  project_name: "projectName",
+  category: "category",
+  location: "location",
+  deadline: "deadline",
+  budget_value: "budgetValue",
+  contact_persona: "contactPersona",
+  reference_number: "referenceNumber",
+  cpv_code: "cpvCode",
+  procedure_type: "procedureType",
+  contract_duration: "contractDuration",
+  delivery_location: "deliveryLocation",
+  submission_language: "submissionLanguage",
+  contact_email: "contactEmail",
+  contact_phone: "contactPhone",
+  scope_description: "scopeDescription",
+  eligibility_requirements: "eligibilityRequirements",
+  evaluation_criteria: "evaluationCriteria",
+};
+
 export async function extractWithGliner(finding: Finding): Promise<Extraction> {
-  const endpoint = process.env.PIONEER_GLINER_ENDPOINT;
-  const apiKey = process.env.PIONEER_GLINER_API_KEY;
-
-  if (!endpoint || !apiKey) {
-    throw new Error("PIONEER_GLINER_ENDPOINT and PIONEER_GLINER_API_KEY are required.");
-  }
-
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      rawAnnouncementText: finding.rawText,
-      sourceType: finding.sourceType,
-      sourceUrl: finding.url,
-      detectedLanguage: finding.detectedLanguage,
-      labels: [
-        "buyerIssuer",
-        "projectName",
-        "category",
-        "location",
-        "deadline",
-        "budgetValue",
-        "contactPersona",
-        "budget_approved",
-        "supplier_call",
-        "pre_announcement",
-        "official_tender",
-        "deadline_near",
-        "login_required",
-      ],
-    }),
+  const result = await inferExtractionAndClues({
+    id: finding.id,
+    rawText: finding.rawText,
+    sourceType: finding.sourceType,
+    url: finding.url,
+    detectedLanguage: finding.detectedLanguage,
   });
 
-  if (!response.ok) {
-    throw new Error(`Pioneer GLiNER failed: ${response.status} ${response.statusText}`);
+  const entities: Partial<Extraction["entities"]> = {};
+  for (const entity of result.entities) {
+    const field = ENTITY_LABEL_TO_FIELD[entity.label];
+    if (field) {
+      entities[field] = entity.text;
+    }
   }
-
-  const parsed = glinerResponseSchema.parse(await response.json());
 
   return {
     id: `ext_${finding.id}`,
     findingId: finding.id,
     model: "fine-tuned GLiNER2 procurement radar",
-    confidence: parsed.confidence,
-    entities: parsed.entities,
-    clueTags: parsed.clueTags as ProcurementClue[],
-    spans: parsed.spans,
+    confidence: result.confidence,
+    entities,
+    clueTags: result.clueTags as ProcurementClue[],
+    spans: result.rawSpans,
   };
 }
 
@@ -188,47 +150,38 @@ export async function scoreWithGemma(
   finding: Finding,
   extraction: Extraction,
 ): Promise<ModelScore> {
-  const endpoint = process.env.PIONEER_GEMMA4_ENDPOINT;
-  const apiKey = process.env.PIONEER_GEMMA4_API_KEY;
-
-  if (!endpoint || !apiKey) {
-    throw new Error("PIONEER_GEMMA4_ENDPOINT and PIONEER_GEMMA4_API_KEY are required.");
-  }
-
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
+  const score = await inferScoring(
+    {
+      id: finding.id,
+      title: finding.title,
+      sourceName: finding.sourceName,
+      sourceType: finding.sourceType,
+      detectedLanguage: finding.detectedLanguage,
+      publishedAt: finding.publishedAt,
+      rawText: finding.rawText,
     },
-    body: JSON.stringify({
-      finding,
-      extraction,
-      requiredOutput: {
-        worthOutreachScore: "0-100",
-        urgency: ["low", "medium", "high"],
-        route: ["ignore", "monitor", "qualify", "human_review"],
-        rationale: "short explanation",
-      },
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Pioneer Gemma 4 failed: ${response.status} ${response.statusText}`);
-  }
-
-  const parsed = gemmaResponseSchema.parse(await response.json());
+    extraction,
+  );
 
   return {
     id: `score_${finding.id}`,
     findingId: finding.id,
     model: "Pioneer Gemma 4 scoring router",
-    worthOutreachScore: parsed.worthOutreachScore,
-    urgency: parsed.urgency as Urgency,
-    route: parsed.route as RouteDecision,
-    rationale: parsed.rationale,
+    worthOutreachScore: score.worthOutreachScore,
+    urgency: score.urgency as Urgency,
+    route: score.route as RouteDecision,
+    rationale: score.rationale,
   };
 }
+
+// --- Gemini ---------------------------------------------------------------
+
+const geminiResponseSchema = z.object({
+  summary: z.string().min(1),
+  risks: z.array(z.string()).default([]),
+  recommendedNextSteps: z.array(z.string()).default([]),
+  blocker: z.string().optional(),
+});
 
 export async function analyzeWithGemini(
   finding: Finding,
@@ -304,6 +257,8 @@ export async function analyzeWithGemini(
     blocker: parsed.blocker,
   };
 }
+
+// --- helpers --------------------------------------------------------------
 
 function stableId(input: string) {
   let hash = 0;

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Mock Tender Portal — Index</title>
+    <style>
+      body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1.25rem; color: #1a1a1a; line-height: 1.55; }
+      h1 { font-size: 1.4rem; }
+      table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.9rem; }
+      th, td { text-align: left; padding: 0.5rem 0.4rem; border-bottom: 1px solid #eee; }
+      th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: #888; }
+      a { color: #0b5fff; text-decoration: none; }
+      a:hover { text-decoration: underline; }
+    </style>
+  </head>
+  <body>
+    <h1>Mock tender portal</h1>
+    <p>
+      Static fixtures used by the Bidderly scraper. Each HTML file embeds
+      a <code>&lt;meta name="tender-id"&gt;</code> tag so the parser can
+      recover the original Finding id after scraping. The body text is
+      identical to the in-app fixture in <code>demo-data.ts</code>, so
+      GLiNER2 entity spans land on the same character offsets at train
+      and serve time.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Language</th>
+          <th>File</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Munich school network modernization</td><td>de</td><td><a href="./munich-it.html">munich-it.html</a></td></tr>
+        <tr><td>Berlin civic solar roofs + monitoring</td><td>de</td><td><a href="./berlin-solar.html">berlin-solar.html</a></td></tr>
+        <tr><td>Hamburg supplier day for citizen service kiosk software</td><td>de</td><td><a href="./hamburg-supplier-day.html">hamburg-supplier-day.html</a></td></tr>
+        <tr><td>EU regional digital public services framework</td><td>en</td><td><a href="./eu-digital-services.html">eu-digital-services.html</a></td></tr>
+        <tr><td>Cologne facility cleaning extension (duplicate)</td><td>de</td><td><a href="./cologne-duplicate.html">cologne-duplicate.html</a></td></tr>
+        <tr><td>Municipal IT leaders networking breakfast</td><td>de</td><td><a href="./network-breakfast.html">network-breakfast.html</a></td></tr>
+        <tr><td>Stuttgart energy monitoring follow-up</td><td>de</td><td><a href="./stuttgart-energy.html">stuttgart-energy.html</a></td></tr>
+        <tr><td>Bremen document management (expired)</td><td>de</td><td><a href="./bremen-expired.html">bremen-expired.html</a></td></tr>
+      </tbody>
+    </table>
+  </body>
+</html>

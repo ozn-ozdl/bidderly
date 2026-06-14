@@ -3,18 +3,15 @@ export type IntegrationStatus = {
   clerk: boolean;
   database: boolean;
   tavily: boolean;
-  pioneerGliner: boolean;
-  pioneerGemma: boolean;
+  pioneerGliner2: boolean;
+  pioneerScoring: boolean;
+  pioneerDryRun: boolean;
   gemini: boolean;
   missing: string[];
 };
 
 const liveProviderKeys = [
   "TAVILY_API_KEY",
-  "PIONEER_GLINER_ENDPOINT",
-  "PIONEER_GLINER_API_KEY",
-  "PIONEER_GEMMA4_ENDPOINT",
-  "PIONEER_GEMMA4_API_KEY",
   "GEMINI_API_KEY",
 ] as const;
 
@@ -38,24 +35,32 @@ export function isDatabaseConfigured() {
   return Boolean(process.env.DATABASE_URL);
 }
 
+export function isPioneerKeyConfigured() {
+  return Boolean(process.env.PIONEER_API_KEY);
+}
+
+export function isPioneerDryRun() {
+  return envFlag("PIONEER_DRY_RUN", true) || !isPioneerKeyConfigured();
+}
+
 export function getIntegrationStatus(): IntegrationStatus {
   const missing = liveProviderKeys.filter((key) => !process.env[key]);
   const liveReady = missing.length === 0;
   const forceFixtures = envFlag("DEMO_USE_FIXTURES", true);
+  const pioneerDryRun = isPioneerDryRun();
+  const pioneerGliner2 = isPioneerKeyConfigured() && Boolean(process.env.PIONEER_GLINER2_MODEL);
+  const pioneerScoring = isPioneerKeyConfigured() && Boolean(process.env.PIONEER_GEMMA4_MODEL);
 
   return {
     mode: forceFixtures ? "fixture" : liveReady ? "live-ready" : "partial-live",
     clerk: isClerkConfigured(),
     database: isDatabaseConfigured(),
     tavily: Boolean(process.env.TAVILY_API_KEY),
-    pioneerGliner: Boolean(
-      process.env.PIONEER_GLINER_ENDPOINT && process.env.PIONEER_GLINER_API_KEY,
-    ),
-    pioneerGemma: Boolean(
-      process.env.PIONEER_GEMMA4_ENDPOINT && process.env.PIONEER_GEMMA4_API_KEY,
-    ),
+    pioneerGliner2,
+    pioneerScoring,
+    pioneerDryRun,
     gemini: Boolean(process.env.GEMINI_API_KEY),
-    missing,
+    missing: missing.slice(),
   };
 }
 
