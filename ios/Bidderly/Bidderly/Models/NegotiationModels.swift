@@ -63,6 +63,58 @@ struct CounterpartyTradeoffOption: Codable, Identifiable, Hashable {
     let parameters: [TradeoffParameter]
 }
 
+enum TermMovement: String, Codable, Hashable {
+    case agentProposed = "agent_proposed"
+    case buyerProposed = "buyer_proposed"
+    case buyerPressing = "buyer_pressing"
+    case agentConceding = "agent_conceding"
+    case aligned
+    case diverging
+}
+
+struct ParsedNegotiationOffer: Codable, Hashable {
+    let referencedPrice: Double?
+    let currency: String?
+    let intent: NegotiationIntent
+    let levers: [String]
+    let terms: [String: String]?
+    let summary: String
+}
+
+typealias ParsedCounterpartyOffer = ParsedNegotiationOffer
+
+struct NegotiationTermField: Codable, Hashable, Identifiable {
+    var id: String { key }
+    let key: String
+    let label: String
+    let agentValue: String?
+    let counterpartyValue: String?
+    let agentDisplay: String?
+    let counterpartyDisplay: String?
+    let movement: TermMovement
+}
+
+struct NegotiationOfferPoint: Codable, Hashable, Identifiable {
+    var id: Int { roundIndex }
+    let roundIndex: Int
+    let at: String
+    let agentPrice: Double?
+    let counterpartyPrice: Double?
+    let agentTerms: [String: String]?
+    let counterpartyTerms: [String: String]?
+}
+
+struct NegotiationDashboard: Codable, Hashable {
+    let offerTimeline: [NegotiationOfferPoint]
+    let currentAgentOffer: Double?
+    let currentCounterpartyOffer: Double?
+    let latestAgentParsed: ParsedNegotiationOffer?
+    let latestParsed: ParsedNegotiationOffer?
+    let gapPct: Int?
+    let termFields: [NegotiationTermField]
+    let activeLevers: [String]
+}
+
 struct NegotiationMessage: Codable, Identifiable, Hashable {
     let id: String
     let negotiationId: String
@@ -74,6 +126,7 @@ struct NegotiationMessage: Codable, Identifiable, Hashable {
     let currency: String?
     let text: String
     let parsedIntent: NegotiationIntent?
+    let parsedOffer: ParsedNegotiationOffer?
 }
 
 struct NegotiationRecord: Codable, Identifiable, Hashable {
@@ -101,6 +154,7 @@ struct NegotiationDetail: Codable {
     let negotiation: NegotiationRecord
     let messages: [NegotiationMessage]
     let pendingOptions: [CounterpartyTradeoffOption]
+    let dashboard: NegotiationDashboard
     let finding: Finding
     let extraction: Extraction?
     let opportunity: Opportunity?

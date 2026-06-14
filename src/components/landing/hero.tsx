@@ -11,7 +11,7 @@ export function LandingHero() {
         <div>
           <div className="inline-flex items-center gap-2 rounded-full border border-rule bg-bg-elev px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-ink-3">
             <span className="h-1.5 w-1.5 rounded-full bg-good" />
-            cascade live · GLiNER2 → Gemma 4 → Gemini
+            scout → GLiNER2 → Gemma 4 → Gemini
           </div>
 
           <h1 className="mt-7 font-display text-[44px] font-normal leading-[1.02] tracking-display sm:text-[64px] lg:text-[76px]">
@@ -23,9 +23,10 @@ export function LandingHero() {
           </h1>
 
           <p className="mt-7 max-w-[52ch] text-[17px] leading-[1.6] text-ink-2">
-            Bidderly is a tender and procurement radar for DACH sales teams. Scout agents watch
-            German and EU portals, score each finding through a cost-aware model cascade, and
-            only interrupt you when a human decision actually moves the deal forward.
+            Bidderly is a tender and procurement radar for DACH sales teams. Scout agents scrape
+            mock tender portals and enrich with Tavily, run each finding through a cost-aware
+            Pioneer + Gemini cascade, and only interrupt you when a human decision moves the deal
+            forward.
           </p>
 
           <div className="mt-9 flex flex-wrap items-center gap-3">
@@ -61,9 +62,9 @@ export function LandingHero() {
           </div>
 
           <dl className="mt-12 grid grid-cols-3 gap-3 border-t border-rule pt-6 text-left sm:max-w-md">
-            <Stat label="Sources watched" value="7" sub="EU · DE · municipal" />
-            <Stat label="Findings / day" value="42" sub="avg. last 14 days" />
-            <Stat label="Interrupts" value="2" sub="per 100 findings" />
+            <Stat label="Demo sources" value="5" sub="4 mock portals + Tavily" />
+            <Stat label="Demo run" value="6" sub="findings per scout" />
+            <Stat label="Gemini gated" value="3" sub="of 6 in demo snapshot" />
           </dl>
         </div>
 
@@ -130,7 +131,7 @@ function HeroCascadeCard() {
             <span className="h-1.5 w-1.5 rounded-full bg-good" />
             <span>scout · run_2026_06_13_0915</span>
           </div>
-          <span>3 stages · 0.41s</span>
+          <span>3 cascade stages · demo run</span>
         </div>
 
         <CascadeDiagram />
@@ -174,9 +175,9 @@ function HeroCascadeCard() {
 
 function CascadeDiagram() {
   const stages = [
-    { label: "GLiNER2", sub: "entities · clues", ms: "0.06s" },
-    { label: "Gemma 4", sub: "score · route", ms: "0.18s" },
-    { label: "Gemini", sub: "reason · next", ms: "0.17s" },
+    { label: "GLiNER2", sub: "entities · clues", step: "Pioneer" },
+    { label: "Gemma 4", sub: "score · route", step: "Pioneer" },
+    { label: "Gemini", sub: "reason · next", step: "Gated" },
   ];
   return (
     <div className="px-4 py-6 sm:px-5">
@@ -186,7 +187,7 @@ function CascadeDiagram() {
             <div className="min-w-0 flex-1 rounded-[var(--radius)] border border-rule bg-bg-elev p-2.5 sm:p-3">
               <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.16em] text-ink-mute">
                 <span>0{i + 1}</span>
-                <span>{s.ms}</span>
+                <span>{s.step}</span>
               </div>
               <div className="mt-2 font-display text-[17px] leading-none tracking-display sm:text-[20px]">
                 {s.label}

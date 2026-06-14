@@ -250,6 +250,56 @@ export type CounterpartyTradeoffOption = {
   parameters: TradeoffParameter[];
 };
 
+export type TermMovement =
+  | "agent_proposed"
+  | "buyer_proposed"
+  | "buyer_pressing"
+  | "agent_conceding"
+  | "aligned"
+  | "diverging";
+
+export type ParsedNegotiationOffer = {
+  referencedPrice?: number;
+  currency?: string;
+  intent: NegotiationIntent;
+  levers: TradeoffParameterKey[];
+  terms: Partial<Record<TradeoffParameterKey, string>>;
+  summary: string;
+};
+
+/** @deprecated Use ParsedNegotiationOffer */
+export type ParsedCounterpartyOffer = ParsedNegotiationOffer;
+
+export type NegotiationTermField = {
+  key: TradeoffParameterKey | "price";
+  label: string;
+  agentValue?: string;
+  counterpartyValue?: string;
+  agentDisplay?: string;
+  counterpartyDisplay?: string;
+  movement: TermMovement;
+};
+
+export type NegotiationOfferPoint = {
+  roundIndex: number;
+  at: string;
+  agentPrice?: number;
+  counterpartyPrice?: number;
+  agentTerms?: Partial<Record<TradeoffParameterKey, string>>;
+  counterpartyTerms?: Partial<Record<TradeoffParameterKey, string>>;
+};
+
+export type NegotiationDashboard = {
+  offerTimeline: NegotiationOfferPoint[];
+  currentAgentOffer?: number;
+  currentCounterpartyOffer?: number;
+  latestAgentParsed?: ParsedNegotiationOffer;
+  latestParsed?: ParsedNegotiationOffer;
+  gapPct?: number;
+  termFields: NegotiationTermField[];
+  activeLevers: TradeoffParameterKey[];
+};
+
 export type NegotiationMessage = {
   id: string;
   negotiationId: string;
@@ -261,6 +311,7 @@ export type NegotiationMessage = {
   currency?: string;
   text: string;
   parsedIntent?: NegotiationIntent;
+  parsedOffer?: ParsedNegotiationOffer;
 };
 
 export type Negotiation = {
@@ -288,6 +339,7 @@ export type NegotiationDetail = {
   negotiation: Negotiation;
   messages: NegotiationMessage[];
   pendingOptions: CounterpartyTradeoffOption[];
+  dashboard: NegotiationDashboard;
   finding: Finding;
   extraction?: Extraction;
   opportunity?: Opportunity;

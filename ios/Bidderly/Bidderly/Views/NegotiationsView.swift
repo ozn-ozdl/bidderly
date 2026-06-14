@@ -72,7 +72,7 @@ struct NegotiationsView: View {
             Text("Live tender negotiations")
                 .font(.subheadline.weight(.semibold))
                 .appInk()
-            Text("Gemini writes agent offers and dynamic trade-off options when configured.")
+            Text("Gemini writes agent offers, parses buyer replies, and generates relevant counter-offer options.")
                 .font(.caption)
                 .appMuted()
                 .fixedSize(horizontal: false, vertical: true)
@@ -202,11 +202,34 @@ private struct NegotiationDetailView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
+            NegotiationDashboardCard(
+                dashboard: detail.dashboard,
+                targetPrice: detail.negotiation.targetPrice,
+                currency: detail.negotiation.currency
+            )
+
             metricsGrid(detail)
 
             VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("MESSAGE GENERATION")
+                        .font(.caption.weight(.bold))
+                        .tracking(0.6)
+                        .appMuted()
+                    Spacer()
+                    if detail.gemini != nil {
+                        Label("Gemini", systemImage: "sparkles")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(AppTheme.teal)
+                    }
+                }
+                Text("Agent offers and buyer replies are generated from the negotiation state. Prices are tracked separately.")
+                    .font(.caption)
+                    .appMuted()
+                    .fixedSize(horizontal: false, vertical: true)
+
                 ForEach(detail.messages) { message in
-                    MessageBubble(message: message)
+                    GeneratedMessageBubble(message: message, currency: detail.negotiation.currency)
                 }
             }
 
@@ -222,14 +245,21 @@ private struct NegotiationDetailView: View {
                     ) { updated in
                         self.detail = updated
                     }
-                    Text("TRADE-OFF OPTIONS")
+                    Text("COUNTER-OFFER OPTIONS")
                         .font(.caption.weight(.bold))
                         .tracking(0.6)
                         .appMuted()
+                    if let parsed = detail.dashboard.latestParsed {
+                        Text("Options are tuned to the buyer's latest position: \(parsed.summary)")
+                            .font(.caption)
+                            .appMuted()
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     ForEach(detail.pendingOptions) { option in
                         TradeoffCard(
                             option: option,
                             negotiationId: detail.negotiation.id,
+                            buyerTarget: detail.dashboard.currentCounterpartyOffer,
                             isResponding: $isResponding
                         ) { updated in
                             self.detail = updated
@@ -285,38 +315,6 @@ private struct MetricCell: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(Color.white.opacity(0.7), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-}
-
-private struct MessageBubble: View {
-    let message: NegotiationMessage
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(message.party.rawValue.uppercased())
-                    .font(.caption2.weight(.bold).monospaced())
-                    .appMuted()
-                Spacer()
-                if let price = message.price {
-                    Text("EUR \(Int(price.rounded()).formatted())")
-                        .font(.caption2.monospaced())
-                        .appMuted()
-                } else if let intent = message.parsedIntent {
-                    Text(intent.rawValue)
-                        .font(.caption2.monospaced())
-                        .appMuted()
-                }
-            }
-            Text(message.text)
-                .font(.subheadline)
-                .appInk()
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppTheme.slateBackground.opacity(0.8), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 
@@ -387,6 +385,7 @@ private struct TradeoffCard: View {
     @Environment(NegotiationClient.self) private var negotiations
     let option: CounterpartyTradeoffOption
     let negotiationId: String
+    let buyerTarget: Double?
     @Binding var isResponding: Bool
     let onUpdate: (NegotiationDetail) -> Void
 
@@ -403,6 +402,12 @@ private struct TradeoffCard: View {
                 .font(.caption)
                 .appMuted()
                 .fixedSize(horizontal: false, vertical: true)
+
+            if let buyerTarget {
+                Text("Buyer target: EUR \(Int(buyerTarget.rounded()).formatted())")
+                    .font(.caption2.weight(.medium).monospaced())
+                    .foregroundStyle(AppTheme.amberAlert)
+            }
 
             ForEach(option.parameters) { param in
                 VStack(alignment: .leading, spacing: 4) {
@@ -440,6 +445,7 @@ private struct TradeoffCard: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .diffusionReveal(trigger: option.id)
         .onAppear {
             if values.isEmpty {
                 values = Dictionary(uniqueKeysWithValues: option.parameters.map { ($0.key, $0.defaultValue) })

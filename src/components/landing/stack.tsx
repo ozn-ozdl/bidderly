@@ -4,17 +4,24 @@ const partners = [
   {
     name: "Pioneer",
     role: "Fine-tuned GLiNER2 + Gemma 4",
-    detail: "Local extraction and scoring models. Trained on synthetic DACH procurement examples.",
+    detail:
+      "Extraction and scoring via api.pioneer.ai. Defaults: gliner2-base-v1 NER, gemma-4-9b-it decoder.",
   },
   {
-    name: "Gemini 2.5",
+    name: "Gemini",
     role: "Reasoning gate",
-    detail: "Only called for high-value or human-review findings. Failure is acceptable.",
+    detail:
+      "gemini-2.5-pro for gated deep analysis; gemini-3.1-flash-lite for negotiation replies.",
   },
   {
     name: "Tavily",
     role: "Search enrichment",
-    detail: "Source URL and snippet discovery for the scout agent.",
+    detail: "Search and extract API for tender URL discovery during live scout runs.",
+  },
+  {
+    name: "Scraper",
+    role: "HTML fetch",
+    detail: "Host-allow-listed fetcher that follows portal links on mock tender sites.",
   },
   {
     name: "Clerk",

@@ -9,11 +9,11 @@ export function LandingCascade() {
       role: "Extraction agent",
       tagline: "Read the page. Label the deal.",
       bullets: [
-        "Buyer, project, deadline, budget, contact.",
-        "Nine procurement clue tags including deadline_near, budget_approved, login_required.",
-        "Fine-tuned on 1,200+ synthetic DACH / EU examples with span-level supervision.",
+        "Buyer, project, deadline, budget, contact — 18 entity fields in the alignment contract.",
+        "20 multi-label procurement clue tags including deadline_near, budget_approved, login_required.",
+        "Fine-tuned via Pioneer on synthetic DACH / EU examples with span-level supervision.",
       ],
-      meta: "fine-tuned on synthetic DACH examples",
+      meta: "Pioneer GLiNER2 · fine-tuned",
       tone: "good" as const,
     },
     {
@@ -26,7 +26,7 @@ export function LandingCascade() {
         "Urgency, route, and rationale as a single structured call.",
         "Cost-aware: cheap model, no Gemini burn on noise.",
       ],
-      meta: "Pioneer Gemma 4 · 8B",
+      meta: "Pioneer Gemma 4 · 9B",
       tone: "accent" as const,
     },
     {
@@ -35,11 +35,11 @@ export function LandingCascade() {
       role: "Reasoning agent",
       tagline: "Only when a human can move.",
       bullets: [
-        "Called only on high-value, high-urgency, or human-review findings.",
+        "Called when score ≥ 70, route is human_review, urgency is high, or a blocker is present.",
         "Returns summary, risks, recommended next steps, and any blocker.",
         "Failure here is acceptable; the cascade gates the spend.",
       ],
-      meta: "Gemini 2.5 · gated",
+      meta: "gemini-2.5-pro · gated",
       tone: "signal" as const,
     },
   ];
@@ -56,28 +56,28 @@ export function LandingCascade() {
               <em className="not-italic text-accent">One decision.</em>
             </h2>
             <p className="mt-5 max-w-md text-[15px] leading-[1.6] text-ink-2">
-              Most AI products throw every page at the most expensive model. Bidderly does the
-              opposite: a fast extractor reads the announcement, a small scorer routes it, and
-              Gemini is only called when a human can actually move the deal forward.
+              Discovery starts with a host-allow-listed scraper and Tavily search/extract on mock
+              tender portals (live) or curated fixtures (demo). Then a fast Pioneer extractor reads
+              each page, Gemma 4 routes it, and Gemini runs only when the gate opens.
             </p>
             <div className="mt-8 grid grid-cols-3 gap-2 text-left">
               <div className="border-t border-rule-strong pt-3">
                 <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-mute">
-                  Avg / finding
+                  Discovery
                 </div>
-                <div className="mt-1 font-display text-2xl tracking-display tnum">$0.004</div>
+                <div className="mt-1 font-display text-xl tracking-display">Scraper + Tavily</div>
               </div>
               <div className="border-t border-rule-strong pt-3">
                 <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-mute">
-                  Gemini calls
+                  Gemini gate
                 </div>
-                <div className="mt-1 font-display text-2xl tracking-display tnum">2 / 100</div>
+                <div className="mt-1 font-display text-xl tracking-display">Score ≥ 70</div>
               </div>
               <div className="border-t border-rule-strong pt-3">
                 <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-mute">
-                  Latency p50
+                  Also opens
                 </div>
-                <div className="mt-1 font-display text-2xl tracking-display tnum">0.41s</div>
+                <div className="mt-1 font-display text-xl tracking-display">Review · urgent</div>
               </div>
             </div>
           </div>

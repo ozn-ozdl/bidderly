@@ -29,7 +29,7 @@ const newsreader = Newsreader({
 export const metadata: Metadata = {
   title: "Bidderly.win | Opportunity Radar",
   description:
-    "Proactive tender and procurement opportunity radar for German and EU sales teams. GLiNER2 → Gemma 4 → Gemini cascade.",
+    "Proactive tender and procurement opportunity radar for German and EU sales teams. Scout → GLiNER2 → Gemma 4 → gated Gemini cascade.",
 };
 
 export const viewport = {

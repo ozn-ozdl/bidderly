@@ -61,8 +61,9 @@ export function LandingFindings() {
               <em className="not-italic text-accent">Real buyers.</em>
             </h2>
             <p className="mt-5 max-w-md text-[15px] leading-[1.6] text-ink-2">
-              Three examples from a real scout run, scored and routed by the cascade. Duplicates,
-              expired notices, and irrelevant posts are filtered out before they hit your inbox.
+              Three examples from the curated demo scout snapshot, scored and routed by the cascade.
+              Duplicates, expired notices, and irrelevant posts are filtered out before they hit
+              your inbox.
             </p>
           </div>
 
@@ -79,7 +80,7 @@ export function LandingFindings() {
                     <span>{f.language}</span>
                     <span className="text-ink-faint">·</span>
                     <span>{f.source}</span>
-                    <span className="ml-2 text-ink-faint">{String(i + 1).padStart(2, "0")} / 18 today</span>
+                    <span className="ml-2 text-ink-faint">{String(i + 1).padStart(2, "0")} / 06 demo</span>
                   </div>
                   <h3 className="mt-2 font-display text-[22px] leading-tight tracking-display">
                     {f.title}

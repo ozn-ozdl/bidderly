@@ -30,7 +30,7 @@ export function LandingFooter() {
           links={[
             { label: "Pioneer GLiNER2", href: "#stack" },
             { label: "Pioneer Gemma 4", href: "#stack" },
-            { label: "Gemini 2.5", href: "#stack" },
+            { label: "Gemini", href: "#stack" },
             { label: "Tavily", href: "#stack" },
           ]}
         />

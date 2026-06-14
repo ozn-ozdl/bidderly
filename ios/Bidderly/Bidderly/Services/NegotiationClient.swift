@@ -54,7 +54,7 @@ final class NegotiationClient {
             let (data, response) = try await session.data(for: request)
             try Self.ensureOK(response)
             let payload = try RadarClient.decoder.decode(NegotiationListResponse.self, from: data)
-            items = payload.negotiations ?? []
+            items = Self.deduped(payload.negotiations ?? [])
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
@@ -147,6 +147,15 @@ final class NegotiationClient {
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private static func deduped(_ negotiations: [NegotiationSummary]) -> [NegotiationSummary] {
+        var seen = Set<String>()
+        return negotiations.filter { summary in
+            guard !seen.contains(summary.approvalId) else { return false }
+            seen.insert(summary.approvalId)
+            return true
         }
     }
 

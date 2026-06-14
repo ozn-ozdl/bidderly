@@ -2,44 +2,44 @@ import { SectionLabel } from "@/components/ui/section-label";
 
 const sources = [
   {
-    name: "TED EU tenders",
+    name: "Mock portal — TED EU",
     type: "Public portal",
-    url: "ted.europa.eu",
-    cadence: "Every 20 min",
+    url: "mock-sites / ted-eu",
+    cadence: "On scout run",
     coverage: "EU",
-    findings: "18 today",
+    findings: "demo",
   },
   {
-    name: "Bund.de procurement",
+    name: "Mock portal — Bund.de",
     type: "Public portal",
-    url: "service.bund.de",
-    cadence: "Every 15 min",
+    url: "mock-sites / bund-de",
+    cadence: "On scout run",
     coverage: "DE federal",
-    findings: "11 today",
+    findings: "demo",
   },
   {
-    name: "Munich council projects",
+    name: "Mock portal — Munich",
     type: "Council page",
-    url: "stadt.muenchen.de",
-    cadence: "Hourly",
+    url: "mock-sites / stadt-muenchen",
+    cadence: "On scout run",
     coverage: "Bavaria",
-    findings: "4 today",
+    findings: "demo",
   },
   {
-    name: "Berlin energy announcements",
+    name: "Mock portal — Berlin",
     type: "Procurement page",
-    url: "berlin.de",
-    cadence: "Hourly",
+    url: "mock-sites / berlin-de",
+    cadence: "On scout run",
     coverage: "Berlin",
-    findings: "3 today",
+    findings: "demo",
   },
   {
-    name: "Regional innovation portals",
-    type: "Enrichment feed",
-    url: "innovation.europa.eu",
-    cadence: "Daily",
-    coverage: "EU",
-    findings: "6 today",
+    name: "Tavily live search",
+    type: "Enrichment",
+    url: "api.tavily.com",
+    cadence: "On scout run",
+    coverage: "DE / EU",
+    findings: "live",
   },
 ];
 
@@ -55,8 +55,9 @@ export function LandingSources() {
             </h2>
           </div>
           <p className="max-w-md text-[14px] leading-[1.6] text-ink-2">
-            A mix of public tender portals, council project pages, and curated enrichment.
-            Scoped to DACH and EU; safe by design, with no third-party login crawling.
+            Live scout runs hit four mock tender portals (styled after TED EU, Bund.de, Munich,
+            and Berlin) plus Tavily search/extract. The demo radar uses curated fixtures with the
+            same cascade — no behind-the-login crawling.
           </p>
         </div>
 
@@ -66,7 +67,7 @@ export function LandingSources() {
             <span>Type</span>
             <span>URL</span>
             <span>Cadence</span>
-            <span className="text-right">Today</span>
+            <span className="text-right">Data</span>
           </div>
           <ul className="divide-y divide-rule">
             {sources.map((s) => (

@@ -10,7 +10,10 @@ import type {
   CounterpartyTradeoffOption,
   NegotiationDetail,
   NegotiationSummary,
+  NegotiationTermField,
+  TermMovement,
 } from "@/lib/radar-types";
+import { Sparkline } from "@/components/ui/sparkline";
 
 type Props = {
   initialSelectedId?: string;
@@ -31,7 +34,13 @@ export function NegotiationsView({ initialSelectedId }: Props) {
       const res = await fetch("/api/negotiations", { cache: "no-store" });
       const payload = (await res.json()) as { ok: boolean; negotiations?: NegotiationSummary[] };
       if (payload.ok) {
-        setItems(payload.negotiations ?? []);
+        const seen = new Set<string>();
+        const deduped = (payload.negotiations ?? []).filter((item) => {
+          if (seen.has(item.approvalId)) return false;
+          seen.add(item.approvalId);
+          return true;
+        });
+        setItems(deduped);
       }
     } finally {
       setLoading(false);
@@ -205,16 +214,47 @@ export function NegotiationsView({ initialSelectedId }: Props) {
                   />
                 </div>
 
+                <OfferDashboard detail={detail} />
+
                 <div className="space-y-3">
+                  <SectionLabel>Message generation</SectionLabel>
+                  <p className="text-[11px] text-ink-3">
+                    Agent offers and buyer replies are tracked separately. Parsed buyer data feeds the chart above.
+                  </p>
                   {detail.messages.map((message) => (
-                    <div key={message.id} className="rounded-[var(--radius-sm)] border border-rule bg-bg-sunk p-3">
+                    <div
+                      key={message.id}
+                      className={`rounded-[var(--radius-sm)] border p-3 ${
+                        message.party === "agent"
+                          ? "border-accent/30 bg-accent/5"
+                          : "border-signal/30 bg-signal/5"
+                      }`}
+                    >
                       <div className="mb-2 flex justify-between gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-mute">
-                        <span>{message.party}</span>
-                        <span>{message.price ? money(message.price) : (message.parsedIntent ?? "")}</span>
+                        <span>{message.party === "agent" ? "Agent offer" : "Buyer reply"}</span>
+                        <span>
+                          {message.price
+                            ? money(message.price)
+                            : message.parsedOffer?.referencedPrice
+                              ? money(message.parsedOffer.referencedPrice)
+                              : (message.parsedIntent ?? "")}
+                        </span>
                       </div>
                       <pre className="whitespace-pre-wrap font-sans text-[12px] leading-relaxed text-ink-2">
                         {message.text}
                       </pre>
+                      {message.parsedOffer ? (
+                        <div className="mt-2 space-y-1 text-[11px] text-ink-3">
+                          <div>{message.parsedOffer.summary}</div>
+                          {message.parsedOffer.terms
+                            ? Object.entries(message.parsedOffer.terms).map(([key, value]) => (
+                                <span key={key} className="mr-2 inline-block rounded-full bg-bg px-2 py-0.5 font-mono text-[10px]">
+                                  {key.replaceAll("_", " ")}: {value}
+                                </span>
+                              ))
+                            : null}
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -227,7 +267,10 @@ export function NegotiationsView({ initialSelectedId }: Props) {
                       onAccept={() => respondWithIntent("accept")}
                       onDeny={() => respondWithIntent("deny")}
                     />
-                    <SectionLabel>Trade-off options</SectionLabel>
+                    <SectionLabel>Counter-offer options</SectionLabel>
+                    {detail.dashboard.latestParsed ? (
+                      <p className="text-[11px] text-ink-3">{detail.dashboard.latestParsed.summary}</p>
+                    ) : null}
                     {detail.pendingOptions.map((option) => (
                       <TradeoffCard key={option.id} option={option} disabled={isResponding} onSend={respond} />
                     ))}
@@ -341,6 +384,112 @@ function TradeoffCard({
       >
         {sending ? "Sending..." : "Send counter-offer"}
       </Button>
+    </div>
+  );
+}
+
+function OfferDashboard({ detail }: { detail: NegotiationDetail }) {
+  const { dashboard } = detail;
+  const agentSeries = dashboard.offerTimeline.map((point) => point.agentPrice).filter((v): v is number => v != null);
+  const buyerSeries = dashboard.offerTimeline
+    .map((point) => point.counterpartyPrice)
+    .filter((v): v is number => v != null);
+
+  return (
+    <div className="rounded-[var(--radius-sm)] border border-rule bg-bg-elev p-3 space-y-3">
+      <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-mute">Negotiation dashboard</div>
+
+      {dashboard.termFields.length > 0 ? (
+        <div className="space-y-2">
+          <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-mute">Active terms</div>
+          {dashboard.termFields.map((field) => (
+            <TermComparisonRow key={field.key} field={field} />
+          ))}
+        </div>
+      ) : null}
+
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,200px)]">
+        <div className="space-y-2">
+          <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-mute">Price trajectory</div>
+          <div className="flex items-center gap-3 text-[11px] text-ink-3">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-accent" />
+              Your offer
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-signal" />
+              Buyer position
+            </span>
+          </div>
+          {agentSeries.length > 0 || buyerSeries.length > 0 ? (
+            <div className="flex flex-wrap gap-4">
+              {agentSeries.length > 0 ? (
+                <Sparkline data={agentSeries} width={160} height={48} stroke="var(--color-accent)" showDots />
+              ) : null}
+              {buyerSeries.length > 0 ? (
+                <Sparkline data={buyerSeries} width={160} height={48} stroke="var(--color-signal)" showDots />
+              ) : null}
+            </div>
+          ) : (
+            <div className="text-[12px] text-ink-mute">Offer data appears after the first exchange.</div>
+          )}
+        </div>
+        <div className="grid gap-2">
+          <Metric
+            label="Your offer"
+            value={dashboard.currentAgentOffer ? money(dashboard.currentAgentOffer) : "—"}
+          />
+          <Metric
+            label="Buyer position"
+            value={dashboard.currentCounterpartyOffer ? money(dashboard.currentCounterpartyOffer) : "—"}
+          />
+          {dashboard.gapPct != null ? <Metric label="Gap" value={`${dashboard.gapPct}%`} /> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TermComparisonRow({ field }: { field: NegotiationTermField }) {
+  return (
+    <div className="rounded-[var(--radius-sm)] border border-rule bg-bg-sunk p-2.5">
+      <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-mute">{field.label}</div>
+      <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-[12px]">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.1em] text-accent">You</div>
+          <div className="font-semibold text-ink">{field.agentDisplay ?? "—"}</div>
+        </div>
+        <MovementArrow movement={field.movement} />
+        <div className="text-right">
+          <div className="text-[10px] uppercase tracking-[0.1em] text-signal">Buyer</div>
+          <div className="font-semibold text-ink">{field.counterpartyDisplay ?? "—"}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MovementArrow({ movement }: { movement: TermMovement }) {
+  const labels: Record<TermMovement, string> = {
+    buyer_pressing: "Buyer pushing",
+    agent_conceding: "You conceding",
+    agent_proposed: "You proposed",
+    buyer_proposed: "Buyer proposed",
+    aligned: "Aligned",
+    diverging: "Diverging",
+  };
+  const arrows: Record<TermMovement, string> = {
+    buyer_pressing: "←",
+    agent_conceding: "→",
+    agent_proposed: "↗",
+    buyer_proposed: "↙",
+    aligned: "=",
+    diverging: "↔",
+  };
+  return (
+    <div className="text-center text-[10px] font-semibold text-ink-3">
+      <div className="text-base leading-none">{arrows[movement]}</div>
+      <div className="mt-0.5">{labels[movement]}</div>
     </div>
   );
 }

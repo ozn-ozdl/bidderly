@@ -11,18 +11,29 @@ import type {
   Finding,
   GeminiAnalysis,
   Negotiation,
+  NegotiationDashboard,
   NegotiationDetail,
   NegotiationIntent,
   NegotiationMessage,
+  NegotiationOfferPoint,
   NegotiationSummary,
   Opportunity,
+  ParsedNegotiationOffer,
+  NegotiationTermField,
+  TermMovement,
   TradeoffParameter,
   TradeoffParameterKey,
 } from "@/lib/radar-types";
 
 const store = new Map<string, NegotiationDetail>();
 const byUser = new Map<string, Set<string>>();
+const byApproval = new Map<string, string>();
+const inFlightStart = new Map<string, Promise<NegotiationDetail>>();
 const MODEL = process.env.NEGOTIATION_MODEL ?? "gemini-3.1-flash-lite";
+
+function approvalKey(userId: string, approvalId: string) {
+  return `${userId}:${approvalId}`;
+}
 
 export class NegotiationError extends Error {
   constructor(public status: number, message: string) {
@@ -98,6 +109,139 @@ function parameter(key: TradeoffParameterKey): TradeoffParameter {
   return { key, ...paramLibrary[key] };
 }
 
+function defaultAgentTerms(): Partial<Record<TradeoffParameterKey, string>> {
+  return {
+    warranty_years: paramLibrary.warranty_years.defaultValue,
+    service_visits: paramLibrary.service_visits.defaultValue,
+    delivery_weeks: paramLibrary.delivery_weeks.defaultValue,
+  };
+}
+
+function termDisplay(key: TradeoffParameterKey, value: string): string {
+  const param = paramLibrary[key];
+  return param.options.find((option) => option.value === value)?.label ?? value;
+}
+
+function parseTermsFromText(text: string): Partial<Record<TradeoffParameterKey, string>> {
+  const terms: Partial<Record<TradeoffParameterKey, string>> = {};
+  const warranty = text.match(/(\d+)\s*(?:yr|year)/i);
+  if (warranty) terms.warranty_years = warranty[1];
+  const visits = text.match(/(\d+)\s*visits?/i);
+  if (visits) terms.service_visits = visits[1];
+  const weeks = text.match(/(\d+)\s*weeks?/i);
+  if (weeks) terms.delivery_weeks = weeks[1];
+  return terms;
+}
+
+function inferBuyerTerms(
+  agentTerms: Partial<Record<TradeoffParameterKey, string>>,
+  levers: TradeoffParameterKey[],
+  roll: () => number,
+): Partial<Record<TradeoffParameterKey, string>> {
+  const terms: Partial<Record<TradeoffParameterKey, string>> = {};
+  for (const lever of levers) {
+    if (lever === "price_delta_pct") continue;
+    const agentValue = Number(agentTerms[lever] ?? paramLibrary[lever].defaultValue);
+    if (lever === "warranty_years") {
+      terms[lever] = String(Math.min(10, agentValue + (roll() > 0.5 ? 2 : 0)));
+    } else if (lever === "service_visits") {
+      terms[lever] = String(Math.min(6, agentValue + (roll() > 0.4 ? 1 : 0)));
+    } else if (lever === "delivery_weeks") {
+      terms[lever] = String(Math.max(4, agentValue - (roll() > 0.5 ? 2 : 0)));
+    }
+  }
+  return terms;
+}
+
+function buildParsedOffer(
+  party: "agent" | "counterparty",
+  price: number | undefined,
+  intent: NegotiationIntent,
+  levers: TradeoffParameterKey[],
+  terms: Partial<Record<TradeoffParameterKey, string>>,
+  summary: string,
+): ParsedNegotiationOffer {
+  return {
+    referencedPrice: price,
+    currency: "EUR",
+    intent,
+    levers,
+    terms,
+    summary,
+  };
+}
+
+function numericTermValue(key: TradeoffParameterKey | "price", value?: string, price?: number): number | undefined {
+  if (key === "price") return price;
+  if (!value) return undefined;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : undefined;
+}
+
+function computeMovement(
+  key: TradeoffParameterKey | "price",
+  agentValue?: string,
+  counterpartyValue?: string,
+  agentPrice?: number,
+  counterpartyPrice?: number,
+): TermMovement {
+  const agentNum = numericTermValue(key, agentValue, agentPrice);
+  const counterNum = numericTermValue(key, counterpartyValue, counterpartyPrice);
+  if (agentNum == null && counterNum != null) return "buyer_proposed";
+  if (agentNum != null && counterNum == null) return "agent_proposed";
+  if (agentNum == null && counterNum == null) return "aligned";
+  if (agentNum === counterNum) return "aligned";
+
+  if (key === "price" || key === "delivery_weeks") {
+    if (counterNum! < agentNum!) return "buyer_pressing";
+    if (counterNum! > agentNum!) return "agent_conceding";
+    return "diverging";
+  }
+  // warranty / service — higher is buyer-favorable
+  if (counterNum! > agentNum!) return "buyer_pressing";
+  if (counterNum! < agentNum!) return "agent_conceding";
+  return "diverging";
+}
+
+function buildTermFields(
+  agentParsed?: ParsedNegotiationOffer,
+  counterpartyParsed?: ParsedNegotiationOffer,
+  agentPrice?: number,
+  counterpartyPrice?: number,
+): NegotiationTermField[] {
+  const activeKeys = new Set<TradeoffParameterKey | "price">();
+  if (agentPrice != null || counterpartyPrice != null) activeKeys.add("price");
+  for (const key of [
+    ...Object.keys(agentParsed?.terms ?? {}),
+    ...Object.keys(counterpartyParsed?.terms ?? {}),
+    ...(agentParsed?.levers ?? []),
+    ...(counterpartyParsed?.levers ?? []),
+  ] as TradeoffParameterKey[]) {
+    if (key !== "price_delta_pct") activeKeys.add(key);
+  }
+
+  return Array.from(activeKeys).map((key) => {
+    const label = key === "price" ? "Offer price" : paramLibrary[key].label;
+    const agentValue = key === "price" ? undefined : agentParsed?.terms?.[key];
+    const counterpartyValue = key === "price" ? undefined : counterpartyParsed?.terms?.[key];
+    const agentDisplay = key === "price"
+      ? (agentPrice != null ? `EUR ${agentPrice.toLocaleString("en-DE")}` : undefined)
+      : (agentValue ? termDisplay(key, agentValue) : undefined);
+    const counterpartyDisplay = key === "price"
+      ? (counterpartyPrice != null ? `EUR ${counterpartyPrice.toLocaleString("en-DE")}` : undefined)
+      : (counterpartyValue ? termDisplay(key, counterpartyValue) : undefined);
+    return {
+      key,
+      label,
+      agentValue,
+      counterpartyValue,
+      agentDisplay,
+      counterpartyDisplay,
+      movement: computeMovement(key, agentValue, counterpartyValue, agentPrice, counterpartyPrice),
+    };
+  });
+}
+
 async function snapshot() {
   return (await getLatestRadarSnapshot()) ?? getRadarSnapshot();
 }
@@ -117,11 +261,318 @@ async function radarJoin(approvalId: string): Promise<RadarJoin> {
   };
 }
 
-function remember(detail: NegotiationDetail) {
-  store.set(detail.negotiation.id, detail);
-  const set = byUser.get(detail.negotiation.userId) ?? new Set<string>();
-  set.add(detail.negotiation.id);
-  byUser.set(detail.negotiation.userId, set);
+function remember(detail: NegotiationDetail): NegotiationDetail {
+  const enriched = enrichDetail(detail);
+  store.set(enriched.negotiation.id, enriched);
+  const set = byUser.get(enriched.negotiation.userId) ?? new Set<string>();
+  set.add(enriched.negotiation.id);
+  byUser.set(enriched.negotiation.userId, set);
+  byApproval.set(
+    approvalKey(enriched.negotiation.userId, enriched.negotiation.approvalId),
+    enriched.negotiation.id,
+  );
+  return enriched;
+}
+
+function impliedCounterpartyAsk(
+  agentPrice: number,
+  negotiation: Negotiation,
+  roundIndex: number,
+  roll: () => number,
+): number {
+  const reduction = 0.06 + roll() * 0.14 + roundIndex * 0.02;
+  const ask = Math.round((agentPrice * (1 - reduction)) / 100) * 100;
+  return Math.max(negotiation.counterpartyFloor, ask);
+}
+
+function parsePriceFromText(text: string): number | undefined {
+  const match = text.match(/(?:EUR|€)\s*([\d][\d.,]*)/i);
+  if (!match) return undefined;
+  const raw = match[1].replace(/\./g, "").replace(",", ".");
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? Math.round(value) : undefined;
+}
+
+function detectLevers(text: string): TradeoffParameterKey[] {
+  const levers: TradeoffParameterKey[] = [];
+  if (/price|cost|budget|eur|€/i.test(text)) levers.push("price_delta_pct");
+  if (/warrant|guarantee/i.test(text)) levers.push("warranty_years");
+  if (/service|maintenance|visit/i.test(text)) levers.push("service_visits");
+  if (/deliver|timeline|lead time|weeks/i.test(text)) levers.push("delivery_weeks");
+  return levers.length ? levers : ["price_delta_pct"];
+}
+
+function distinctCounterpartyPrice(
+  agentPrice: number,
+  impliedAsk: number,
+  intent: NegotiationIntent,
+  textPrice?: number,
+): number | undefined {
+  if (intent === "deny") return textPrice ?? impliedAsk;
+  if (intent === "accept") return agentPrice;
+  const candidate = textPrice ?? impliedAsk;
+  if (candidate >= agentPrice) {
+    return Math.max(Math.round(agentPrice * 0.88 / 100) * 100, impliedAsk);
+  }
+  return candidate;
+}
+
+function fallbackParseCounterparty(
+  text: string,
+  intent: NegotiationIntent,
+  agentPrice: number,
+  impliedAsk: number,
+  agentTerms: Partial<Record<TradeoffParameterKey, string>>,
+  roll: () => number,
+): ParsedNegotiationOffer {
+  const textPrice = parsePriceFromText(text);
+  const referencedPrice = distinctCounterpartyPrice(agentPrice, impliedAsk, intent, textPrice);
+  const levers = detectLevers(text);
+  const textTerms = parseTermsFromText(text);
+  let inferredTerms = inferBuyerTerms(agentTerms, levers, roll);
+  if (intent === "negotiate" && Object.keys(inferredTerms).length === 0) {
+    inferredTerms = inferBuyerTerms(agentTerms, Object.keys(agentTerms) as TradeoffParameterKey[], roll);
+  }
+  const terms = { ...inferredTerms, ...textTerms };
+  const summary = intent === "accept"
+    ? "Buyer accepted the current offer."
+    : intent === "deny"
+      ? "Buyer rejected the offer as outside budget."
+      : `Buyer requests movement on ${levers.map((key) => paramLibrary[key].label.toLowerCase()).join(" and ")}.`;
+  return buildParsedOffer("counterparty", referencedPrice, intent, levers, terms, summary);
+}
+
+const parseOfferSchema = z.object({
+  referencedPrice: z.number().optional(),
+  intent: z.enum(["accept", "deny", "negotiate"]),
+  levers: z.array(z.enum(["price_delta_pct", "warranty_years", "service_visits", "delivery_weeks"])).default([]),
+  terms: z.record(z.string(), z.string()).optional(),
+  summary: z.string().min(1),
+});
+
+async function parseCounterpartyMessage(
+  text: string,
+  buyer: string,
+  agentPrice: number,
+  intent: NegotiationIntent,
+  impliedAsk: number,
+  agentTerms: Partial<Record<TradeoffParameterKey, string>>,
+  roll: () => number,
+): Promise<ParsedNegotiationOffer> {
+  if (!process.env.GEMINI_API_KEY) {
+    return fallbackParseCounterparty(text, intent, agentPrice, impliedAsk, agentTerms, roll);
+  }
+  try {
+    const result = await gemini(
+      [
+        "Extract structured procurement negotiation data from the buyer's message.",
+        "The agent (bidder) offer price must stay separate from the buyer's referenced or target price.",
+        "Extract all discussed terms: warranty_years, service_visits, delivery_weeks as string values.",
+        `Buyer: ${buyer}`,
+        `Agent offer under discussion: EUR ${agentPrice}`,
+        `Agent terms: ${JSON.stringify(agentTerms)}`,
+        `Deterministic intent: ${intent}`,
+        `Buyer message: ${text}`,
+        "Return JSON with referencedPrice, intent, levers, terms (map of lever keys to values), summary.",
+      ].join("\n"),
+      {
+        type: "object",
+        properties: {
+          referencedPrice: { type: "number" },
+          intent: { type: "string", enum: ["accept", "deny", "negotiate"] },
+          levers: {
+            type: "array",
+            items: { type: "string", enum: ["price_delta_pct", "warranty_years", "service_visits", "delivery_weeks"] },
+          },
+          terms: { type: "object", additionalProperties: { type: "string" } },
+          summary: { type: "string" },
+        },
+        required: ["intent", "summary"],
+      },
+      parseOfferSchema.parse,
+    );
+    const levers = result.levers.length ? result.levers : detectLevers(text);
+    const referencedPrice = distinctCounterpartyPrice(
+      agentPrice,
+      impliedAsk,
+      result.intent,
+      result.referencedPrice ?? parsePriceFromText(text),
+    );
+    const inferredTerms = inferBuyerTerms(agentTerms, levers, roll);
+    const terms = {
+      ...inferredTerms,
+      ...((result.terms ?? {}) as Partial<Record<TradeoffParameterKey, string>>),
+      ...parseTermsFromText(text),
+    };
+    return buildParsedOffer("counterparty", referencedPrice, result.intent, levers, terms, result.summary);
+  } catch {
+    return fallbackParseCounterparty(text, intent, agentPrice, impliedAsk, agentTerms, roll);
+  }
+}
+
+function parseAgentMessage(
+  text: string,
+  price: number,
+  terms: Partial<Record<TradeoffParameterKey, string>>,
+): ParsedNegotiationOffer {
+  const parsedTerms = { ...terms, ...parseTermsFromText(text) };
+  const levers: TradeoffParameterKey[] = (Object.keys(parsedTerms) as TradeoffParameterKey[]).length
+    ? (Object.keys(parsedTerms) as TradeoffParameterKey[])
+    : ["price_delta_pct", "warranty_years", "service_visits", "delivery_weeks"];
+  return buildParsedOffer(
+    "agent",
+    price,
+    "negotiate",
+    levers,
+    parsedTerms,
+    "Agent submitted a revised proposal.",
+  );
+}
+
+function counterpartyPriceFromMessage(
+  message: NegotiationMessage,
+  lastAgentPrice: number | undefined,
+  negotiation: Negotiation,
+): number | undefined {
+  if (message.parsedOffer?.referencedPrice != null) return message.parsedOffer.referencedPrice;
+  if (message.parsedIntent === "accept" && lastAgentPrice != null) return lastAgentPrice;
+  if (lastAgentPrice == null) return undefined;
+  return impliedCounterpartyAsk(
+    lastAgentPrice,
+    negotiation,
+    message.roundIndex,
+    rng(negotiation.seed + message.roundIndex),
+  );
+}
+
+function buildDashboard(messages: NegotiationMessage[], negotiation: Negotiation): NegotiationDashboard {
+  const rounds = new Map<number, NegotiationOfferPoint>();
+  let lastAgent: number | undefined;
+  let lastCounterparty: number | undefined;
+  let latestParsed: ParsedNegotiationOffer | undefined;
+  let latestAgentParsed: ParsedNegotiationOffer | undefined;
+  let lastAgentTerms: Partial<Record<TradeoffParameterKey, string>> = defaultAgentTerms();
+  let lastCounterpartyTerms: Partial<Record<TradeoffParameterKey, string>> = {};
+
+  for (const message of messages) {
+    const point = rounds.get(message.roundIndex) ?? {
+      roundIndex: message.roundIndex,
+      at: message.at,
+    };
+    if (message.party === "agent") {
+      if (message.price != null) {
+        point.agentPrice = message.price;
+        lastAgent = message.price;
+      }
+      if (message.parsedOffer?.terms) {
+        point.agentTerms = message.parsedOffer.terms;
+        lastAgentTerms = message.parsedOffer.terms;
+      }
+      if (message.parsedOffer) latestAgentParsed = message.parsedOffer;
+    }
+    if (message.party === "counterparty") {
+      const counterpartyPrice = counterpartyPriceFromMessage(message, lastAgent, negotiation);
+      if (counterpartyPrice != null) {
+        point.counterpartyPrice = counterpartyPrice;
+        lastCounterparty = counterpartyPrice;
+      }
+      if (message.parsedOffer) {
+        latestParsed = message.parsedOffer;
+        if (message.parsedOffer.terms) {
+          point.counterpartyTerms = message.parsedOffer.terms;
+          lastCounterpartyTerms = message.parsedOffer.terms;
+        }
+      }
+    }
+    point.at = message.at;
+    rounds.set(message.roundIndex, point);
+  }
+
+  const offerTimeline = Array.from(rounds.values()).sort((a, b) => a.roundIndex - b.roundIndex);
+  const gapPct = lastAgent != null && lastCounterparty != null && lastAgent > 0
+    ? Math.round(((lastAgent - lastCounterparty) / lastAgent) * 100)
+    : undefined;
+
+  const activeLevers = Array.from(new Set<TradeoffParameterKey>([
+    ...(latestAgentParsed?.levers ?? []),
+    ...(latestParsed?.levers ?? []),
+    ...Object.keys(lastAgentTerms) as TradeoffParameterKey[],
+    ...Object.keys(lastCounterpartyTerms) as TradeoffParameterKey[],
+  ])).filter((key) => key !== "price_delta_pct");
+
+  const termFields = buildTermFields(
+    latestAgentParsed,
+    latestParsed,
+    lastAgent,
+    lastCounterparty,
+  );
+
+  return {
+    offerTimeline,
+    currentAgentOffer: lastAgent,
+    currentCounterpartyOffer: lastCounterparty,
+    latestAgentParsed,
+    latestParsed,
+    gapPct,
+    termFields,
+    activeLevers,
+  };
+}
+
+function enrichDetail(detail: NegotiationDetail): NegotiationDetail {
+  return {
+    ...detail,
+    dashboard: buildDashboard(detail.messages, detail.negotiation),
+  };
+}
+
+async function attachCounterpartyMessage(
+  negotiation: Negotiation,
+  roundIndex: number,
+  agentPrice: number,
+  intent: NegotiationIntent,
+  buyer: string,
+  tenderTitle: string,
+  roll: () => number,
+  agentTerms: Partial<Record<TradeoffParameterKey, string>>,
+): Promise<NegotiationMessage> {
+  const text = await counterpartyReply(intent, buyer, agentPrice, roll, tenderTitle);
+  const impliedAsk = impliedCounterpartyAsk(agentPrice, negotiation, roundIndex, roll);
+  const parsedOffer = await parseCounterpartyMessage(text, buyer, agentPrice, intent, impliedAsk, agentTerms, roll);
+  return {
+    id: id("msg"),
+    negotiationId: negotiation.id,
+    roundIndex,
+    party: "counterparty",
+    channel: "simulated",
+    at: new Date().toISOString(),
+    text,
+    parsedIntent: intent,
+    parsedOffer,
+  };
+}
+
+function emptyDashboard(): NegotiationDashboard {
+  return { offerTimeline: [], termFields: [], activeLevers: [] };
+}
+
+function latestAgentTerms(messages: NegotiationMessage[]): Partial<Record<TradeoffParameterKey, string>> {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const terms = messages[i].parsedOffer?.terms;
+    if (messages[i].party === "agent" && terms) return terms;
+  }
+  return defaultAgentTerms();
+}
+
+function termsFromAdjusted(
+  parameters: TradeoffParameter[],
+  adjusted: Record<string, string>,
+): Partial<Record<TradeoffParameterKey, string>> {
+  return Object.fromEntries(
+    parameters
+      .filter((param) => param.key !== "price_delta_pct")
+      .map((param) => [param.key, adjusted[param.key] ?? param.defaultValue]),
+  ) as Partial<Record<TradeoffParameterKey, string>>;
 }
 
 function parseValueBand(valueBand?: string) {
@@ -247,15 +698,35 @@ const optionSchema = z.object({
   })).min(3).max(5),
 });
 
-async function optionsFor(negotiationId: string, roundIndex: number, buyer: string, message: string) {
+async function optionsFor(
+  negotiationId: string,
+  roundIndex: number,
+  buyer: string,
+  message: string,
+  parsed: ParsedNegotiationOffer,
+  agentPrice: number,
+  negotiation: Negotiation,
+) {
+  const context = JSON.stringify({
+    agentPrice,
+    counterpartyPrice: parsed.referencedPrice,
+    targetPrice: negotiation.targetPrice,
+    openingPrice: negotiation.openingPrice,
+    levers: parsed.levers,
+    terms: parsed.terms,
+    summary: parsed.summary,
+  });
   let raw: Array<{ title: string; summary: string; parameterKeys: TradeoffParameterKey[] }>;
   if (process.env.GEMINI_API_KEY) {
     const result = await gemini(
       [
-        "Generate 3 to 5 procurement counter-offer strategies.",
+        "Generate 3 to 5 procurement counter-offer strategies for the bidder (agent).",
+        "Each option must respond to the buyer's parsed position and use only relevant levers.",
         "Allowed parameterKeys only: price_delta_pct, warranty_years, service_visits, delivery_weeks.",
         `Buyer: ${buyer}`,
         `Buyer message: ${message}`,
+        `Parsed buyer position: ${context}`,
+        "Price options must move toward but not below the buyer's referenced price when cutting price.",
         "Return JSON {\"options\":[{\"title\":string,\"summary\":string,\"parameterKeys\":string[]}]}",
       ].join("\n"),
       {
@@ -283,10 +754,24 @@ async function optionsFor(negotiationId: string, roundIndex: number, buyer: stri
     );
     raw = result.options;
   } else {
+    const levers = parsed.levers.length ? parsed.levers : ["price_delta_pct" as TradeoffParameterKey];
+    const secondary = levers.find((key) => key !== "price_delta_pct") ?? "service_visits";
     raw = [
-      { title: "Aggressive price cut", summary: "Cut price and reduce service to recover margin.", parameterKeys: ["price_delta_pct", "service_visits"] },
-      { title: "Balanced concession", summary: "Moderate price movement with a delivery adjustment.", parameterKeys: ["price_delta_pct", "delivery_weeks"] },
-      { title: "Hold price, add value", summary: "Hold price while improving warranty and service.", parameterKeys: ["warranty_years", "service_visits"] },
+      {
+        title: "Meet buyer on price",
+        summary: `Cut price toward EUR ${parsed.referencedPrice?.toLocaleString("en-DE") ?? "buyer target"} while trimming ${paramLibrary[secondary].label.toLowerCase()}.`,
+        parameterKeys: ["price_delta_pct", secondary],
+      },
+      {
+        title: "Balanced concession",
+        summary: "Moderate price movement with a delivery adjustment.",
+        parameterKeys: ["price_delta_pct", "delivery_weeks"],
+      },
+      {
+        title: "Hold price, add value",
+        summary: "Hold price while improving warranty and service to match buyer levers.",
+        parameterKeys: levers.includes("warranty_years") ? ["warranty_years", "service_visits"] : ["warranty_years", "service_visits"],
+      },
     ];
   }
   return raw.map((item, index): CounterpartyTradeoffOption => ({
@@ -364,11 +849,38 @@ function applyPrice(base: number, adjusted: Record<string, string>, parameters: 
   return Number.isFinite(pct) ? Math.max(0, Math.round((base * (1 + pct / 100)) / 100) * 100) : base;
 }
 
-export async function startNegotiation(approvalId: string, userId: string): Promise<NegotiationDetail> {
+function existingNegotiationForApproval(approvalId: string, userId: string): NegotiationDetail | undefined {
+  const keyed = byApproval.get(approvalKey(userId, approvalId));
+  if (keyed) {
+    const detail = store.get(keyed);
+    if (detail?.negotiation.approvalId === approvalId) return detail;
+  }
   for (const id of byUser.get(userId) ?? []) {
     const detail = store.get(id);
     if (detail?.negotiation.approvalId === approvalId) return detail;
   }
+  return undefined;
+}
+
+export async function startNegotiation(approvalId: string, userId: string): Promise<NegotiationDetail> {
+  const key = approvalKey(userId, approvalId);
+  const existing = existingNegotiationForApproval(approvalId, userId);
+  if (existing) return enrichDetail(existing);
+
+  const inFlight = inFlightStart.get(key);
+  if (inFlight) return inFlight;
+
+  const promise = createNegotiation(approvalId, userId).finally(() => {
+    inFlightStart.delete(key);
+  });
+  inFlightStart.set(key, promise);
+  return promise;
+}
+
+async function createNegotiation(approvalId: string, userId: string): Promise<NegotiationDetail> {
+  const existing = existingNegotiationForApproval(approvalId, userId);
+  if (existing) return enrichDetail(existing);
+
   const join = await radarJoin(approvalId);
   const { openingPrice, targetPrice } = parseValueBand(join.opportunity?.valueBand);
   const seed = hash(join.finding.id);
@@ -393,6 +905,8 @@ export async function startNegotiation(approvalId: string, userId: string): Prom
     lastMessageAt: startedAt,
   };
   const buyer = join.opportunity?.buyer ?? join.finding.sourceName;
+  const openingTerms = defaultAgentTerms();
+  const openingText = await openingOffer(join.finding, join.opportunity, openingPrice);
   const agent: NegotiationMessage = {
     id: id("msg"),
     negotiationId: negotiation.id,
@@ -402,21 +916,37 @@ export async function startNegotiation(approvalId: string, userId: string): Prom
     at: startedAt,
     price: openingPrice,
     currency: "EUR",
-    text: await openingOffer(join.finding, join.opportunity, openingPrice),
+    text: openingText,
+    parsedOffer: buildParsedOffer(
+      "agent",
+      openingPrice,
+      "negotiate",
+      Object.keys(openingTerms) as TradeoffParameterKey[],
+      openingTerms,
+      "Opening offer submitted.",
+    ),
   };
   const intent = evaluate(openingPrice, floor, 0);
-  const counter: NegotiationMessage = {
-    id: id("msg"),
-    negotiationId: negotiation.id,
-    roundIndex: 0,
-    party: "counterparty",
-    channel: "simulated",
-    at: new Date().toISOString(),
-    text: await counterpartyReply(intent, buyer, openingPrice, roll, join.opportunity?.title ?? join.finding.title),
-    parsedIntent: intent,
-  };
+  const counter = await attachCounterpartyMessage(
+    negotiation,
+    0,
+    openingPrice,
+    intent,
+    buyer,
+    join.opportunity?.title ?? join.finding.title,
+    roll,
+    openingTerms,
+  );
   const pendingOptions = intent === "negotiate"
-    ? await optionsFor(negotiation.id, 0, buyer, counter.text)
+    ? await optionsFor(
+      negotiation.id,
+      0,
+      buyer,
+      counter.text,
+      counter.parsedOffer!,
+      openingPrice,
+      negotiation,
+    )
     : [];
   const finalNegotiation: Negotiation = {
     ...negotiation,
@@ -431,14 +961,14 @@ export async function startNegotiation(approvalId: string, userId: string): Prom
     negotiation: finalNegotiation,
     messages: [agent, counter],
     pendingOptions,
+    dashboard: emptyDashboard(),
     finding: join.finding,
     extraction: join.extraction,
     opportunity: join.opportunity,
     approval: join.approval,
     gemini: join.gemini,
   };
-  remember(detail);
-  return detail;
+  return remember(detail);
 }
 
 export async function respondWithIntent(
@@ -457,6 +987,8 @@ export async function respondWithIntent(
   const lastPrice = [...detail.messages].reverse().find((item) => item.party === "agent" && item.price)?.price
     ?? detail.negotiation.openingPrice;
   const round = detail.negotiation.rounds;
+  const agentTerms = latestAgentTerms(detail.messages);
+  const agentText = await agentIntentMessage(intent, buyer, lastPrice, tenderTitle);
   const agent: NegotiationMessage = {
     id: id("msg"),
     negotiationId,
@@ -466,25 +998,27 @@ export async function respondWithIntent(
     at: new Date().toISOString(),
     price: intent === "accept" ? lastPrice : undefined,
     currency: "EUR",
-    text: await agentIntentMessage(intent, buyer, lastPrice, tenderTitle),
+    text: agentText,
+    parsedOffer: buildParsedOffer(
+      "agent",
+      intent === "accept" ? lastPrice : undefined,
+      intent,
+      Object.keys(agentTerms) as TradeoffParameterKey[],
+      agentTerms,
+      intent === "accept" ? "Agent accepted buyer position." : "Agent withdrew from negotiation.",
+    ),
   };
   if (intent === "accept") {
-    const counter: NegotiationMessage = {
-      id: id("msg"),
-      negotiationId,
-      roundIndex: round,
-      party: "counterparty",
-      channel: "simulated",
-      at: new Date().toISOString(),
-      text: await counterpartyReply(
-        "accept",
-        buyer,
-        lastPrice,
-        rng(detail.negotiation.seed + round),
-        tenderTitle,
-      ),
-      parsedIntent: "accept",
-    };
+    const counter = await attachCounterpartyMessage(
+      detail.negotiation,
+      round,
+      lastPrice,
+      "accept",
+      buyer,
+      tenderTitle,
+      rng(detail.negotiation.seed + round),
+      agentTerms,
+    );
     const next: NegotiationDetail = {
       ...detail,
       negotiation: {
@@ -498,11 +1032,11 @@ export async function respondWithIntent(
       },
       messages: [...detail.messages, agent, counter],
       pendingOptions: [],
+      dashboard: emptyDashboard(),
     };
-    remember(next);
-    return next;
+    return remember(next);
   }
-  const next: NegotiationDetail = {
+  return remember({
     ...detail,
     negotiation: {
       ...detail.negotiation,
@@ -514,9 +1048,8 @@ export async function respondWithIntent(
     },
     messages: [...detail.messages, agent],
     pendingOptions: [],
-  };
-  remember(next);
-  return next;
+    dashboard: emptyDashboard(),
+  });
 }
 
 export async function respondToCounterparty(
@@ -535,6 +1068,8 @@ export async function respondToCounterparty(
   const lastPrice = [...detail.messages].reverse().find((item) => item.party === "agent" && item.price)?.price ?? detail.negotiation.openingPrice;
   const price = applyPrice(lastPrice, adjustedParameters, option.parameters);
   const round = detail.negotiation.rounds;
+  const agentTerms = termsFromAdjusted(option.parameters, adjustedParameters);
+  const agentText = await counterOffer(buyer, adjustedParameters, option.parameters, price);
   const agent: NegotiationMessage = {
     id: id("msg"),
     negotiationId,
@@ -544,27 +1079,30 @@ export async function respondToCounterparty(
     at: new Date().toISOString(),
     price,
     currency: "EUR",
-    text: await counterOffer(buyer, adjustedParameters, option.parameters, price),
+    text: agentText,
+    parsedOffer: parseAgentMessage(agentText, price, agentTerms),
   };
   const intent = evaluate(price, detail.negotiation.counterpartyFloor, round);
-  const counter: NegotiationMessage = {
-    id: id("msg"),
-    negotiationId,
-    roundIndex: round,
-    party: "counterparty",
-    channel: "simulated",
-    at: new Date().toISOString(),
-    text: await counterpartyReply(
-      intent,
-      buyer,
-      price,
-      rng(detail.negotiation.seed + round),
-      detail.opportunity?.title ?? detail.finding.title,
-    ),
-    parsedIntent: intent,
-  };
+  const counter = await attachCounterpartyMessage(
+    detail.negotiation,
+    round,
+    price,
+    intent,
+    buyer,
+    detail.opportunity?.title ?? detail.finding.title,
+    rng(detail.negotiation.seed + round),
+    agentTerms,
+  );
   const pendingOptions = intent === "negotiate"
-    ? await optionsFor(negotiationId, round, buyer, counter.text)
+    ? await optionsFor(
+      negotiationId,
+      round,
+      buyer,
+      counter.text,
+      counter.parsedOffer!,
+      price,
+      detail.negotiation,
+    )
     : [];
   const next: NegotiationDetail = {
     ...detail,
@@ -579,9 +1117,9 @@ export async function respondToCounterparty(
     },
     messages: [...detail.messages, agent, counter],
     pendingOptions,
+    dashboard: emptyDashboard(),
   };
-  remember(next);
-  return next;
+  return remember(next);
 }
 
 async function seed(userId: string) {
@@ -592,10 +1130,11 @@ async function seed(userId: string) {
 
 export async function listNegotiations(userId: string): Promise<NegotiationSummary[]> {
   if (!byUser.get(userId)?.size) await seed(userId);
-  return Array.from(byUser.get(userId) ?? []).flatMap((id) => {
+  const byApprovalId = new Map<string, NegotiationSummary>();
+  for (const id of byUser.get(userId) ?? []) {
     const detail = store.get(id);
-    if (!detail) return [];
-    return [{
+    if (!detail) continue;
+    const summary: NegotiationSummary = {
       id: detail.negotiation.id,
       findingId: detail.negotiation.findingId,
       approvalId: detail.negotiation.approvalId,
@@ -612,21 +1151,34 @@ export async function listNegotiations(userId: string): Promise<NegotiationSumma
       agreedPrice: detail.negotiation.agreedPrice,
       title: detail.opportunity?.title ?? detail.finding.title,
       buyer: detail.opportunity?.buyer ?? detail.finding.sourceName,
-    }];
-  });
+    };
+    const prior = byApprovalId.get(summary.approvalId);
+    if (!prior || summary.lastMessageAt > prior.lastMessageAt) {
+      byApprovalId.set(summary.approvalId, summary);
+    }
+  }
+  return Array.from(byApprovalId.values()).sort(
+    (a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt),
+  );
 }
 
 export async function getNegotiationDetail(id: string, userId: string): Promise<NegotiationDetail> {
   const detail = store.get(id);
   if (!detail) throw new NegotiationError(404, `negotiation ${id} not found`);
   if (detail.negotiation.userId !== userId) throw new NegotiationError(403, "negotiation belongs to a different user");
-  return detail;
+  return enrichDetail(detail);
 }
 
 export async function resetNegotiations(userId: string): Promise<{ cleared: number }> {
   const ids = byUser.get(userId) ?? new Set<string>();
   const cleared = ids.size;
-  for (const id of ids) store.delete(id);
+  for (const id of ids) {
+    const detail = store.get(id);
+    if (detail) {
+      byApproval.delete(approvalKey(userId, detail.negotiation.approvalId));
+    }
+    store.delete(id);
+  }
   byUser.delete(userId);
   await seed(userId);
   return { cleared };

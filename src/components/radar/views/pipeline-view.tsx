@@ -16,6 +16,8 @@ type PipelineViewProps = {
 
 export function PipelineView({ snapshot, liveEvents }: PipelineViewProps) {
   const lastRun = snapshot.scoutRun;
+  const geminiCalls = snapshot.geminiAnalyses.length;
+  const pendingApprovals = snapshot.approvals.filter((a) => a.status === "pending").length;
 
   return (
     <div className="space-y-4">
@@ -52,18 +54,19 @@ export function PipelineView({ snapshot, liveEvents }: PipelineViewProps) {
               icon={Sparkles}
               label="Gemini"
               status="ok"
-              sub="2 calls"
+              sub={`${geminiCalls} calls`}
             />
           </div>
           <p className="mt-3 text-[12px] text-ink-3">
-            All stages responded within 0.6s. Gemini invoked on 2 of 18 findings (gate enforced).
+            Gemini invoked on {geminiCalls} of {snapshot.findings.length} findings (gate enforced:
+            score ≥ 70, human_review, high urgency, or blocker).
           </p>
         </Card>
 
         <Card className="p-5">
           <SectionLabel>Why we interrupt</SectionLabel>
           <p className="mt-3 text-[12px] leading-relaxed text-ink-2">
-            <span className="font-display text-2xl tracking-display">2</span> of{" "}
+            <span className="font-display text-2xl tracking-display">{pendingApprovals}</span> of{" "}
             <span className="font-mono tnum">{snapshot.findings.length}</span> findings are
             blocked on a human decision. The cascade gates the rest.
           </p>
