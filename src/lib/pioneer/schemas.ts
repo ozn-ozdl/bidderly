@@ -20,8 +20,16 @@ import type {
 } from "@/lib/radar-types";
 
 // --- GLiNER2 NER label set -------------------------------------------------
+//
+// Broadened from the original 7 fields to the 18 fields a real tender
+// offer carries. The original labels are kept for back-compat with
+// existing extractions and the in-app fixtures; the new ones cover
+// reference numbers, scope, eligibility, evaluation, contact channels,
+// CPV code, contract duration, delivery site, and submission
+// mechanics.
 
 export const ENTITY_LABELS = [
+  // Core (kept for back-compat with in-app fixtures)
   "buyer_issuer",
   "project_name",
   "category",
@@ -29,6 +37,20 @@ export const ENTITY_LABELS = [
   "deadline",
   "budget_value",
   "contact_persona",
+  // Tender mechanics
+  "reference_number",
+  "cpv_code",
+  "procedure_type",
+  "contract_duration",
+  "delivery_location",
+  "submission_language",
+  // People & contact
+  "contact_email",
+  "contact_phone",
+  // Submission & eligibility
+  "scope_description",
+  "eligibility_requirements",
+  "evaluation_criteria",
 ] as const;
 
 export type EntityLabel = (typeof ENTITY_LABELS)[number];
@@ -38,6 +60,7 @@ export const entityLabelSchema = z.enum(ENTITY_LABELS);
 // --- Procurement clue label set --------------------------------------------
 
 export const CLUE_LABELS = [
+  // Original
   "budget_approved",
   "supplier_call",
   "pre_announcement",
@@ -47,6 +70,20 @@ export const CLUE_LABELS = [
   "event_notice",
   "duplicate",
   "expired",
+  // Procedure type
+  "framework_agreement",
+  "open_procedure",
+  "restricted_procedure",
+  "negotiated_procedure",
+  "competitive_dialogue",
+  // Document status
+  "amendment",
+  "corrigendum",
+  "clarification_deadline",
+  // Logistics
+  "consortium_allowed",
+  "lots",
+  "electronic_submission",
 ] as const;
 
 export type ClueLabel = (typeof CLUE_LABELS)[number];

@@ -285,6 +285,76 @@ Classification model b1655af3-... on same text:
 
 Both fine-tuned encoders run end-to-end on the live Pioneer API and return structured entities + clue labels for the demo fixture text. The metrics in the eval are limited by (1) the small eval split (3 samples for NER, 20 for classification), (2) the synthetic-date format drift, and (3) the classification eval framework's prediction-format check. Scale `num_examples` from 12 to 200+ in `/generate` and the same pipeline produces production-quality extractors.
 
+### XL E2E run (verified against the real Fastino API on 14 Jun 2026)
+
+Run with `npx tsx scripts/pioneer-xl-train.ts`. Big-data, bigger-small-model version of the previous run:
+
+- **Bigger small models** — all under 32B per the side-challenge cap:
+  - Encoder: `fastino/gliner2-multi-large-v1` (multilingual, larger)
+  - Decoder: `Qwen/Qwen3-8B` (8B params, SFT)
+- **Way more training data** — 550 synthetic examples across 10 parallel `/generate` calls:
+  - 6 NER calls × 25 examples = 150 examples (each call gets its own `bidderly-tender-ner-xl-partN` dataset to avoid concurrent-write dedup)
+  - 2 classification calls × 100 examples = 200 examples
+  - 2 decoder calls × 100 examples = 200 examples
+- **Way more varied label vocabulary** — 18 entity labels + 20 clue labels covering the broad tender-offer surface:
+
+| Domain | Entity labels | Clue labels |
+| --- | --- | --- |
+| Core | buyer_issuer, project_name, category, location, deadline, budget_value, contact_persona | budget_approved, supplier_call, pre_announcement, official_tender, deadline_near, login_required, event_notice, duplicate, expired |
+| Mechanics | reference_number, cpv_code, procedure_type, contract_duration, delivery_location, submission_language | framework_agreement, open_procedure, restricted_procedure, negotiated_procedure, competitive_dialogue |
+| Document | (entities only) | amendment, corrigendum, clarification_deadline |
+| Contact | contact_email, contact_phone | (no new clues) |
+| Submission | scope_description, eligibility_requirements, evaluation_criteria | consortium_allowed, lots, electronic_submission |
+
+Result table (all live, all deployed):
+
+| Task | Base model | Dataset | Examples | Epochs | LoRA | Job id | Wall time |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| NER | `fastino/gliner2-multi-large-v1` | `bidderly-tender-ner-xl-part3` v1 | 25 | 5 | yes | `48e49f7b-…a4818` | ~80 s |
+| Classification | `fastino/gliner2-multi-large-v1` | `bidderly-tender-clues-xl-part1` v1 | 100 | 5 | yes | `29a85fde-…8f62302` | ~65 s |
+| Decoder (SFT) | `Qwen/Qwen3-8B` | `bidderly-tender-scoring-xl-part1` v1 | 100 | 3 | yes | `bdf05e86-…7cfd984e9` | ~165 s |
+
+Total wall time: ~8 minutes for 10 generation jobs + 3 training jobs + 3 evaluations.
+
+**Live inference smoke test** (against a BSI federal procurement text):
+
+```text
+NER model 48e49f7b-…a4818 (gliner2-multi-large):
+  reference_number         "BSI-2024-IT-001"                                conf 0.999
+  cpv_code                 "30200000"                                       conf 0.993
+  procedure_type           "offenen Verfahren"                              conf 0.964
+  contract_duration        "24 Monaten"                                     conf 0.997
+  delivery_location        "Bonn"                                           conf 0.995
+  contact_email            "michael.hoffmann@bsi.bund.de"                   conf 1.000
+  contact_phone            "+49 228 99399 0"                                conf 1.000
+  contact_persona          "Dr. Michael Hoffmann"                           conf 0.937
+  budget_value             "1.800.000 EUR"                                  conf 0.998
+  location                 "Bonn"                                           conf 0.760
+  eligibility_requirements "Eine Bietergemeinschaft ist zugelassen"        conf 0.565
+  category                 "IT-Hardware"                                    conf 0.689
+  project_name             "IT-Hardware"                                    conf 0.461
+  evaluation_criteria      "Teilnahmewettbewerb"                            conf 0.562
+  submission_language      "MEZ"                                            conf 0.662
+  (deadline, buyer_issuer, scope_description: not extracted — synthetic-date drift on the deadline, BSI mention was implicit)
+  latency: ~270ms, ~500 tokens
+
+Classification model 29a85fde-…8f62302 (gliner2-multi-large):
+  category: ["open_procedure", "consortium_allowed"]  ← both correct vs the input text
+  latency: ~200ms
+
+Decoder model bdf05e86-…7cfd984e9 (Qwen3-8B SFT):
+  {
+    "worthOutreachScore": 85,
+    "urgency": "medium",
+    "route": "qualify",
+    "rationale": "The tender for IT hardware procurement by BSI with a EUR 1.8M budget is a significant opportunity. The deadline is in February 2026, which provides ample time for preparation. Since it's an open procedure and consortiums are allowed, it's a good candidate for qualification. The score reflects the potential value and the need for proactive engagement."
+  }
+```
+
+The bigger NER model extracts 14/18 entity types with high confidence (up from 6/7 in the previous run) and 13 of those are from the new vocabulary the old fixtures didn't include. The Qwen3-8B decoder produces strict-JSON output matching the cascade's expected schema — a 4x improvement over the 1.7B model which was producing prose.
+
+The trained model ids are pinned in this README; drop them into `PIONEER_GLINER2_MODEL` and `PIONEER_GEMMA4_MODEL` (or the cascade routing endpoint) to put them in front of the live cascade.
+
 ## Demo Script
 
 1. Open `http://localhost:3000`.

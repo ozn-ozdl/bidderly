@@ -8,6 +8,7 @@ export type SourceType =
 export type SourceStatus = "healthy" | "degraded" | "blocked";
 
 export type ProcurementClue =
+  // Original
   | "budget_approved"
   | "supplier_call"
   | "pre_announcement"
@@ -16,7 +17,21 @@ export type ProcurementClue =
   | "login_required"
   | "event_notice"
   | "duplicate"
-  | "expired";
+  | "expired"
+  // Procedure type
+  | "framework_agreement"
+  | "open_procedure"
+  | "restricted_procedure"
+  | "negotiated_procedure"
+  | "competitive_dialogue"
+  // Document status
+  | "amendment"
+  | "corrigendum"
+  | "clarification_deadline"
+  // Logistics
+  | "consortium_allowed"
+  | "lots"
+  | "electronic_submission";
 
 export type Urgency = "low" | "medium" | "high";
 
@@ -59,6 +74,8 @@ export type EntitySpan = {
 };
 
 export type ExtractedEntities = {
+  // Core (kept for back-compat with existing extractions and the
+  // in-app fixture extractions).
   buyerIssuer?: string;
   projectName?: string;
   category?: string;
@@ -66,6 +83,20 @@ export type ExtractedEntities = {
   deadline?: string;
   budgetValue?: string;
   contactPersona?: string;
+  // Tender mechanics.
+  referenceNumber?: string;
+  cpvCode?: string;
+  procedureType?: string;
+  contractDuration?: string;
+  deliveryLocation?: string;
+  submissionLanguage?: string;
+  // Contact.
+  contactEmail?: string;
+  contactPhone?: string;
+  // Submission & eligibility.
+  scopeDescription?: string;
+  eligibilityRequirements?: string;
+  evaluationCriteria?: string;
 };
 
 export type Finding = {

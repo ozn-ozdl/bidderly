@@ -93,6 +93,31 @@ export async function searchTenderSignals() {
 
 // --- Pioneer (extraction + clues, multi-head) -----------------------------
 
+// The model emits label strings in snake_case; map each into the
+// ExtractedEntities shape the cascade consumes. The mapping is
+// forward-only — anything we don't recognise is dropped to keep the
+// typed shape stable.
+const ENTITY_LABEL_TO_FIELD: Record<string, keyof Extraction["entities"]> = {
+  buyer_issuer: "buyerIssuer",
+  project_name: "projectName",
+  category: "category",
+  location: "location",
+  deadline: "deadline",
+  budget_value: "budgetValue",
+  contact_persona: "contactPersona",
+  reference_number: "referenceNumber",
+  cpv_code: "cpvCode",
+  procedure_type: "procedureType",
+  contract_duration: "contractDuration",
+  delivery_location: "deliveryLocation",
+  submission_language: "submissionLanguage",
+  contact_email: "contactEmail",
+  contact_phone: "contactPhone",
+  scope_description: "scopeDescription",
+  eligibility_requirements: "eligibilityRequirements",
+  evaluation_criteria: "evaluationCriteria",
+};
+
 export async function extractWithGliner(finding: Finding): Promise<Extraction> {
   const result = await inferExtractionAndClues({
     id: finding.id,
@@ -102,14 +127,11 @@ export async function extractWithGliner(finding: Finding): Promise<Extraction> {
     detectedLanguage: finding.detectedLanguage,
   });
 
-  const entities: Record<string, string> = {};
+  const entities: Partial<Extraction["entities"]> = {};
   for (const entity of result.entities) {
-    if (result.rawSpans.length === 0) continue;
-    const cleaned = entity.label.toLowerCase();
-    if (cleaned === "buyer_issuer" || cleaned === "project_name" || cleaned === "category" ||
-        cleaned === "location" || cleaned === "deadline" || cleaned === "budget_value" ||
-        cleaned === "contact_persona") {
-      entities[cleaned] = entity.text;
+    const field = ENTITY_LABEL_TO_FIELD[entity.label];
+    if (field) {
+      entities[field] = entity.text;
     }
   }
 
@@ -118,15 +140,7 @@ export async function extractWithGliner(finding: Finding): Promise<Extraction> {
     findingId: finding.id,
     model: "fine-tuned GLiNER2 procurement radar",
     confidence: result.confidence,
-    entities: {
-      buyerIssuer: entities.buyer_issuer,
-      projectName: entities.project_name,
-      category: entities.category,
-      location: entities.location,
-      deadline: entities.deadline,
-      budgetValue: entities.budget_value,
-      contactPersona: entities.contact_persona,
-    },
+    entities,
     clueTags: result.clueTags as ProcurementClue[],
     spans: result.rawSpans,
   };

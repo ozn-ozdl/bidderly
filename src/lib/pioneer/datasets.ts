@@ -70,15 +70,32 @@ const datasetVersionSchema = z.object({
   created_at: z.string().optional(),
 });
 
+// Live API returns a flat list — each item is one version, not a
+// "dataset with latest_version" wrapper. Field names also differ
+// from the docs: `dataset_name` (not `name`), `sample_size` (not
+// `count` in latest_version), `version_number` (returned as a
+// STRING, e.g. "1"). We accept both shapes so dry-run and live
+// callers can use the same surface.
 const datasetListItemSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().min(1).optional(),
+  dataset_name: z.string().min(1).optional(),
   task_type: z.string().optional(),
+  dataset_type: z.string().optional(),
+  version: z.union([z.number().int(), z.string()]).optional(),
+  version_number: z.union([z.number().int(), z.string()]).optional(),
+  count: z.number().int().nonnegative().optional(),
+  sample_size: z.number().int().nonnegative().nullable().optional(),
+  status: z.string().min(1).optional(),
   latest_version: datasetVersionSchema.optional(),
   created_at: z.string().optional(),
 });
 
 const datasetListSchema = z.object({
   datasets: z.array(datasetListItemSchema).default([]),
+  // Live API also returns { success, count } alongside `datasets`; we
+  // ignore them in callers but allow them in the schema.
+  success: z.boolean().optional(),
+  count: z.number().int().nonnegative().optional(),
 });
 
 export type GenerateJobStatus = z.infer<typeof generateJobStatusSchema>;
@@ -178,9 +195,22 @@ export async function listDatasets() {
   const res = await pioneerFetch<unknown>("/felix/datasets");
   const parsed = datasetListSchema.safeParse(res.data);
   if (!parsed.success) {
+    console.error("[pioneer] /felix/datasets returned unexpected body", res.data);
     throw new PioneerError(422, "unprocessable_entity", "Pioneer /felix/datasets returned an unexpected body.");
   }
-  return { source: "live" as const, datasets: parsed.data.datasets };
+  // Normalize live items so callers see the same shape regardless of source.
+  const datasets = parsed.data.datasets.map((d) => {
+    const v = d.latest_version?.version ?? d.version ?? d.version_number;
+    return {
+      name: d.name ?? d.dataset_name ?? "",
+      task_type: (d.task_type ?? d.dataset_type) as "ner" | "classification" | "decoder" | undefined,
+      status: d.latest_version?.status ?? d.status,
+      count: d.latest_version?.count ?? d.count ?? d.sample_size ?? 0,
+      version: typeof v === "string" ? Number(v) : v,
+      created_at: d.latest_version?.created_at ?? d.created_at,
+    };
+  });
+  return { source: "live" as const, datasets };
 }
 
 export async function getDataset(name: string) {
@@ -204,7 +234,19 @@ export async function getDataset(name: string) {
   if (!parsed.success) {
     return { source: "live" as const, dataset: null };
   }
-  return { source: "live" as const, dataset: parsed.data };
+  const d = parsed.data;
+  const v = d.latest_version?.version ?? d.version ?? d.version_number;
+  return {
+    source: "live" as const,
+    dataset: {
+      name: d.name ?? d.dataset_name ?? name,
+      task_type: (d.task_type ?? d.dataset_type) as "ner" | "classification" | "decoder" | undefined,
+      status: d.latest_version?.status ?? d.status,
+      count: d.latest_version?.count ?? d.count ?? d.sample_size ?? 0,
+      version: typeof v === "string" ? Number(v) : v,
+      created_at: d.latest_version?.created_at ?? d.created_at,
+    },
+  };
 }
 
 // --- Dry-run implementation ------------------------------------------------
@@ -283,10 +325,23 @@ async function pollDryRunGenerationJob(jobId: string): Promise<GenerateJobStatus
 
 export const PIONEER_DOMAIN_DESCRIPTION = [
   "Public procurement tender announcements from DACH and EU portals,",
-  "written in formal German and English, with explicit buyer, project,",
-  "deadline, budget, and contact entities, plus procurement signal clues",
-  "(budget_approved, supplier_call, official_tender, deadline_near,",
-  "login_required, pre_announcement, event_notice, duplicate, expired).",
+  "written in formal German and English, covering a broad range of",
+  "tender-offer fields:",
+  "  - core: buyer_issuer, project_name, category, location, deadline,",
+  "    budget_value, contact_persona",
+  "  - mechanics: reference_number, cpv_code, procedure_type,",
+  "    contract_duration, delivery_location, submission_language",
+  "  - contact: contact_email, contact_phone",
+  "  - submission: scope_description, eligibility_requirements,",
+  "    evaluation_criteria",
+  "plus procurement signal clues:",
+  "  - status: budget_approved, supplier_call, pre_announcement,",
+  "    official_tender, deadline_near, login_required, event_notice,",
+  "    duplicate, expired",
+  "  - procedure: framework_agreement, open_procedure,",
+  "    restricted_procedure, negotiated_procedure, competitive_dialogue",
+  "  - document: amendment, corrigendum, clarification_deadline",
+  "  - logistics: consortium_allowed, lots, electronic_submission",
 ].join(" ");
 
 export const PIONEER_DECODER_PROMPT = [
@@ -294,7 +349,8 @@ export const PIONEER_DECODER_PROMPT = [
   "",
   "Score 0-100. Pick urgency low/medium/high. Pick route",
   "ignore/monitor/qualify/human_review. Always include a one-sentence",
-  "rationale that cites one clue tag or entity.",
+  "rationale that cites at least one clue tag and at least one entity",
+  "(e.g. a deadline or budget entity).",
 ].join("\n");
 
 // --- Convenience used by the synthesize route ------------------------------
