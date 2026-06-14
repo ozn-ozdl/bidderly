@@ -21,7 +21,7 @@ function AuthNotConfigured({ mode }: { mode: string }) {
         <h1 className="text-xl font-semibold">Clerk {mode} is not configured</h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">
           Set `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` to enable
-          hosted authentication. Demo mode keeps the dashboard open.
+          hosted authentication. Without Clerk, the dashboard stays available for local development.
         </p>
       </div>
     </main>

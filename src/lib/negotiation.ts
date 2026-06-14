@@ -298,6 +298,37 @@ async function optionsFor(negotiationId: string, roundIndex: number, buyer: stri
   }));
 }
 
+async function agentIntentMessage(
+  intent: "accept" | "deny",
+  buyer: string,
+  price: number,
+  tenderTitle: string,
+) {
+  if (!process.env.GEMINI_API_KEY) {
+    if (intent === "accept") {
+      return `Subject: Acceptance - ${tenderTitle}\n\nDear ${buyer},\n\nWe accept your position and are ready to proceed at EUR ${price.toLocaleString("en-DE")}. Please send the formal paperwork.\n\nBest regards,\nThe Bidderly Bid Team`;
+    }
+    return `Subject: Withdrawal - ${tenderTitle}\n\nDear ${buyer},\n\nAfter review we cannot meet the current requirements and must withdraw from this negotiation.\n\nBest regards,\nThe Bidderly Bid Team`;
+  }
+  const instruction = intent === "accept"
+    ? "Accept the buyer's latest position and confirm readiness to proceed at the current offer price."
+    : "Politely withdraw from the negotiation because the current requirements cannot be met.";
+  const result = await gemini(
+    [
+      "Write a concise procurement email for Bidderly as the bidder.",
+      `Outcome: ${intent}`,
+      `Buyer: ${buyer}`,
+      `Tender: ${tenderTitle}`,
+      `Current offer: EUR ${price}`,
+      `Required semantics: ${instruction}`,
+      "Return JSON {\"text\": string}.",
+    ].join("\n"),
+    { type: "object", properties: { text: { type: "string" } }, required: ["text"] },
+    z.object({ text: z.string().min(1) }).parse,
+  );
+  return result.text;
+}
+
 async function counterOffer(
   buyer: string,
   adjusted: Record<string, string>,
@@ -408,6 +439,84 @@ export async function startNegotiation(approvalId: string, userId: string): Prom
   };
   remember(detail);
   return detail;
+}
+
+export async function respondWithIntent(
+  negotiationId: string,
+  intent: "accept" | "deny",
+  userId: string,
+): Promise<NegotiationDetail> {
+  const detail = store.get(negotiationId);
+  if (!detail) throw new NegotiationError(404, `negotiation ${negotiationId} not found`);
+  if (detail.negotiation.userId !== userId) throw new NegotiationError(403, "negotiation belongs to a different user");
+  if (detail.negotiation.status !== "awaiting_user") {
+    throw new NegotiationError(409, `negotiation is in status ${detail.negotiation.status}`);
+  }
+  const buyer = detail.opportunity?.buyer ?? detail.finding.sourceName;
+  const tenderTitle = detail.opportunity?.title ?? detail.finding.title;
+  const lastPrice = [...detail.messages].reverse().find((item) => item.party === "agent" && item.price)?.price
+    ?? detail.negotiation.openingPrice;
+  const round = detail.negotiation.rounds;
+  const agent: NegotiationMessage = {
+    id: id("msg"),
+    negotiationId,
+    roundIndex: round,
+    party: "agent",
+    channel: "simulated",
+    at: new Date().toISOString(),
+    price: intent === "accept" ? lastPrice : undefined,
+    currency: "EUR",
+    text: await agentIntentMessage(intent, buyer, lastPrice, tenderTitle),
+  };
+  if (intent === "accept") {
+    const counter: NegotiationMessage = {
+      id: id("msg"),
+      negotiationId,
+      roundIndex: round,
+      party: "counterparty",
+      channel: "simulated",
+      at: new Date().toISOString(),
+      text: await counterpartyReply(
+        "accept",
+        buyer,
+        lastPrice,
+        rng(detail.negotiation.seed + round),
+        tenderTitle,
+      ),
+      parsedIntent: "accept",
+    };
+    const next: NegotiationDetail = {
+      ...detail,
+      negotiation: {
+        ...detail.negotiation,
+        status: "accepted",
+        rounds: detail.negotiation.rounds + 1,
+        lastMessageAt: counter.at,
+        endedAt: counter.at,
+        outcome: "deal",
+        agreedPrice: lastPrice,
+      },
+      messages: [...detail.messages, agent, counter],
+      pendingOptions: [],
+    };
+    remember(next);
+    return next;
+  }
+  const next: NegotiationDetail = {
+    ...detail,
+    negotiation: {
+      ...detail.negotiation,
+      status: "denied",
+      rounds: detail.negotiation.rounds + 1,
+      lastMessageAt: agent.at,
+      endedAt: agent.at,
+      outcome: "no_deal",
+    },
+    messages: [...detail.messages, agent],
+    pendingOptions: [],
+  };
+  remember(next);
+  return next;
 }
 
 export async function respondToCounterparty(

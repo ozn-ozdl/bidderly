@@ -34,11 +34,11 @@ const sources = [
     findings: "3 today",
   },
   {
-    name: "Curated hackathon feed",
-    type: "Manual demo",
-    url: "local://demo",
-    cadence: "Manual",
-    coverage: "DACH / EU",
+    name: "Regional innovation portals",
+    type: "Enrichment feed",
+    url: "innovation.europa.eu",
+    cadence: "Daily",
+    coverage: "EU",
     findings: "6 today",
   },
 ];

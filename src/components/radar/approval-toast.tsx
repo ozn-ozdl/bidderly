@@ -25,7 +25,7 @@ export function ApprovalToast({ approval, onApprove, onNeedsInfo, onDismiss }: A
     <div
       role="status"
       aria-live="polite"
-      className="fixed bottom-20 left-1/2 z-40 w-[min(100%-2rem,440px)] -translate-x-1/2 rounded-[var(--radius)] border border-rule-strong bg-bg-elev p-4 shadow-[var(--shadow-2)] sm:bottom-24"
+      className="bottom-nav-offset fixed left-1/2 z-40 w-[min(100%-2rem,440px)] -translate-x-1/2 rounded-[var(--radius)] border border-rule-strong bg-bg-elev p-4 shadow-[var(--shadow-2)] lg:bottom-6"
     >
       <div className="flex items-start gap-3">
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-warn-soft text-warn">

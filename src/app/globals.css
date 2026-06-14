@@ -280,3 +280,29 @@ a {
   --radius-sm-default: var(--radius-sm);
   --radius-lg-default: var(--radius-lg);
 }
+
+/* =========================================================================
+   Mobile safe areas
+   ========================================================================= */
+
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.pb-nav {
+  padding-bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 1024px) {
+  .pb-nav {
+    padding-bottom: 2rem;
+  }
+}
+
+.bottom-nav-offset {
+  bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+}

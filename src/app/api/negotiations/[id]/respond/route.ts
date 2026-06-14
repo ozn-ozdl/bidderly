@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 
 import { isClerkConfigured } from "@/lib/env";
-import { NegotiationError, respondToCounterparty } from "@/lib/negotiation";
+import { NegotiationError, respondToCounterparty, respondWithIntent } from "@/lib/negotiation";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -17,18 +17,24 @@ async function resolveUserId() {
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   const body = (await request.json().catch(() => ({}))) as {
+    intent?: "accept" | "deny";
     optionId?: string;
     adjustedParameters?: Record<string, string>;
   };
-  if (!body.optionId) {
-    return Response.json({ ok: false, error: "optionId required" }, { status: 400 });
-  }
+  const userId = await resolveUserId();
   try {
+    if (body.intent === "accept" || body.intent === "deny") {
+      const detail = await respondWithIntent(id, body.intent, userId);
+      return Response.json({ ok: true, detail });
+    }
+    if (!body.optionId) {
+      return Response.json({ ok: false, error: "optionId or intent required" }, { status: 400 });
+    }
     const detail = await respondToCounterparty(
       id,
       body.optionId,
       body.adjustedParameters ?? {},
-      await resolveUserId(),
+      userId,
     );
     return Response.json({ ok: true, detail });
   } catch (error) {

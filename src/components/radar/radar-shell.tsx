@@ -19,6 +19,7 @@ import { PipelineView } from "./views/pipeline-view";
 import { ApprovalsView } from "./views/approvals-view";
 import { InsightsView } from "@/components/insights/insights-view";
 import { PioneerView } from "./views/pioneer-view";
+import { SettingsView } from "./views/settings-view";
 import { NegotiationsView } from "@/components/negotiations/negotiations-view";
 import { FindingDrawer } from "./finding-drawer";
 import { ApprovalToast } from "./approval-toast";
@@ -48,7 +49,7 @@ export function RadarShell({
   const [activeView, setActiveView] = useState<SidebarKey>(initialView);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const { state: userState, actions: userActions } = useUserState();
+  const { state: userState, actions: userActions, connected } = useUserState();
 
   const approvalIdByFindingId = useMemo(() => {
     const map = new Map<string, string>();
@@ -239,6 +240,7 @@ export function RadarShell({
         <main className="min-w-0 flex-1 overflow-y-auto">
           <RadarHeaderBar
             snapshot={snapshot}
+            activeView={activeView}
             pendingCount={pendingApprovals.length}
             isRunning={isRunning}
             onRun={runScout}
@@ -247,12 +249,18 @@ export function RadarShell({
             authSlot={<AuthControls clerkConfigured={integrationStatus.clerk} />}
           />
 
-          <div className="mx-auto w-full max-w-[1480px] space-y-5 px-4 py-5 pb-20 sm:px-6 lg:px-8 lg:pb-8">
+          <div className="pb-nav mx-auto w-full max-w-[1480px] space-y-5 px-4 py-5 sm:px-6 lg:px-8 lg:pb-8">
             {activeView === "radar" ? (
               <RadarView
                 snapshot={snapshot}
+                pendingApprovals={pendingApprovals}
+                approvalStatuses={mergedApprovalStatuses}
                 pendingCount={pendingApprovals.length}
                 onOpenApprovals={() => setActiveView("approvals")}
+                onOpenFinding={(findingId) => {
+                  setSelectedFindingId(findingId);
+                  setDrawerOpen(true);
+                }}
               />
             ) : null}
 
@@ -270,6 +278,18 @@ export function RadarShell({
 
             {activeView === "negotiations" ? (
               <NegotiationsView initialSelectedId={initialNegotiationId} />
+            ) : null}
+
+            {activeView === "settings" ? (
+              <SettingsView
+                integrationStatus={integrationStatus}
+                connected={connected}
+                liveEvents={liveEvents}
+                onResetApprovals={resetApprovals}
+                isResetting={isResetting}
+                onNavigate={setActiveView}
+                clerkConfigured={integrationStatus.clerk}
+              />
             ) : null}
 
             {activeView === "approvals" ? (
@@ -333,13 +353,13 @@ function AuthControls({ clerkConfigured }: { clerkConfigured: boolean }) {
     return (
       <span className="hidden items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-mute sm:inline-flex">
         <UserRound className="h-3 w-3" />
-        demo@bidderly.win
+        Guest
       </span>
     );
   }
   return (
     <Show when="signed-in">
-      <div className="flex h-9 items-center rounded-[var(--radius-sm)] border border-rule bg-bg-elev px-2">
+      <div className="hidden h-9 items-center rounded-[var(--radius-sm)] border border-rule bg-bg-elev px-2 lg:flex">
         <UserButton />
       </div>
     </Show>

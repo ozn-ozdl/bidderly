@@ -14,6 +14,7 @@
 import { z } from "zod";
 
 import { inferExtractionAndClues, inferScoring } from "@/lib/pioneer";
+import { buildTavilyScoutRequest } from "@/lib/tavily-scout";
 import type {
   Extraction,
   Finding,
@@ -38,6 +39,18 @@ const tavilyResponseSchema = z.object({
   results: z.array(tavilyResultSchema).default([]),
 });
 
+const tavilyExtractResultSchema = z.object({
+  url: z.string().url(),
+  raw_content: z.string().optional(),
+});
+
+const tavilyExtractResponseSchema = z.object({
+  results: z.array(tavilyExtractResultSchema).default([]),
+  failed_results: z
+    .array(z.object({ url: z.string(), error: z.string().optional() }))
+    .default([]),
+});
+
 export async function searchTenderSignals() {
   const apiKey = process.env.TAVILY_API_KEY;
 
@@ -45,24 +58,39 @@ export async function searchTenderSignals() {
     throw new Error("TAVILY_API_KEY is required for live search.");
   }
 
+  const scout = buildTavilyScoutRequest();
+
+  // Tavily crawls the public web; it cannot discover or extract pages
+  // served only on localhost. The direct scraper stage covers local dev.
+  if (scout.isLocal) {
+    return [];
+  }
+
+  const searchResults = await tavilySearch(apiKey, scout);
+
+  // Tavily cannot reach localhost. When the mock portals are on a public
+  // Railway host, fall back to direct URL extraction if search returns
+  // nothing (common for freshly deployed demo sites).
+  if (searchResults.length === 0) {
+    const extracted = await tavilyExtract(apiKey, scout);
+    return dedupeTavilyFindings([...searchResults, ...extracted]);
+  }
+
+  return searchResults;
+}
+
+async function tavilySearch(
+  apiKey: string,
+  scout: ReturnType<typeof buildTavilyScoutRequest>,
+): Promise<Finding[]> {
   const response = await fetch("https://api.tavily.com/search", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      ...(process.env.TAVILY_PROJECT_ID
-        ? { "X-Project-ID": process.env.TAVILY_PROJECT_ID }
-        : {}),
-    },
+    headers: tavilyHeaders(apiKey),
     body: JSON.stringify({
-      // Default query: scope the search to the mock-sites Railway
-      // service the cascade actually scrapes. Operators can override
-      // with TAVILY_SCOUT_QUERY for a different demo.
-      query:
-        process.env.TAVILY_SCOUT_QUERY ??
-        `${process.env.MOCK_TENDER_BASE_URL ?? "http://localhost:3002"} tender OR beschaffung OR vergabe OR ausschreibung`,
+      query: scout.query,
+      ...(scout.includeDomains ? { include_domains: scout.includeDomains } : {}),
       search_depth: "basic",
-      max_results: 5,
+      max_results: 8,
       include_answer: false,
       include_raw_content: "markdown",
       include_images: false,
@@ -74,25 +102,107 @@ export async function searchTenderSignals() {
   }
 
   const payload = tavilyResponseSchema.parse(await response.json());
+  return payload.results.map((result, index) => tavilyResultToFinding(result, index));
+}
+
+async function tavilyExtract(
+  apiKey: string,
+  scout: ReturnType<typeof buildTavilyScoutRequest>,
+): Promise<Finding[]> {
+  const response = await fetch("https://api.tavily.com/extract", {
+    method: "POST",
+    headers: tavilyHeaders(apiKey),
+    body: JSON.stringify({
+      urls: scout.discoveryUrls,
+      query: scout.query,
+      format: "markdown",
+      extract_depth: "basic",
+      chunks_per_source: 3,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Tavily extract failed: ${response.status} ${response.statusText}`);
+  }
+
+  const payload = tavilyExtractResponseSchema.parse(await response.json());
   const now = new Date().toISOString();
 
-  return payload.results.map((result, index): Finding => {
-    const title = result.title ?? `Live procurement signal ${index + 1}`;
-    const rawText = result.raw_content ?? result.content ?? title;
+  return payload.results
+    .filter((result) => Boolean(result.raw_content?.trim()))
+    .map((result, index) => {
+      const rawText = result.raw_content!.trim();
+      const title = titleFromTavilyUrl(result.url, index);
 
-    return {
-      id: `find_live_${stableId(result.url ?? title)}`,
-      sourceId: "src_tavily_live",
-      sourceName: "Tavily live search",
-      sourceType: "tavily_search",
-      title,
-      url: result.url ?? "https://api.tavily.com/search",
-      rawText,
-      detectedLanguage: rawText.match(/[äöüß]/i) ? "de" : "en",
-      publishedAt: result.published_date ?? now,
-      stage: "raw",
-    };
-  });
+      return {
+        id: `find_live_${stableId(result.url)}`,
+        sourceId: "src_tavily_live",
+        sourceName: "Tavily live search",
+        sourceType: "tavily_search" as const,
+        title,
+        url: result.url,
+        rawText,
+        detectedLanguage: rawText.match(/[äöüß]/i) ? "de" : "en",
+        publishedAt: now,
+        stage: "raw" as const,
+      };
+    });
+}
+
+function tavilyHeaders(apiKey: string): Record<string, string> {
+  return {
+    Authorization: `Bearer ${apiKey}`,
+    "Content-Type": "application/json",
+    ...(process.env.TAVILY_PROJECT_ID
+      ? { "X-Project-ID": process.env.TAVILY_PROJECT_ID }
+      : {}),
+  };
+}
+
+function tavilyResultToFinding(
+  result: z.infer<typeof tavilyResultSchema>,
+  index: number,
+): Finding {
+  const now = new Date().toISOString();
+  const title = result.title ?? titleFromTavilyUrl(result.url ?? "", index);
+  const rawText = result.raw_content ?? result.content ?? title;
+
+  return {
+    id: `find_live_${stableId(result.url ?? title)}`,
+    sourceId: "src_tavily_live",
+    sourceName: "Tavily live search",
+    sourceType: "tavily_search",
+    title,
+    url: result.url ?? "https://api.tavily.com/search",
+    rawText,
+    detectedLanguage: rawText.match(/[äöüß]/i) ? "de" : "en",
+    publishedAt: result.published_date ?? now,
+    stage: "raw",
+  };
+}
+
+function titleFromTavilyUrl(url: string, index: number): string {
+  try {
+    const parsed = new URL(url);
+    const slug = parsed.pathname.split("/").filter(Boolean).at(-1) ?? "portal";
+    return `Mock tender portal · ${slug.replace(/[-_]/g, " ")}`;
+  } catch {
+    return `Live procurement signal ${index + 1}`;
+  }
+}
+
+function dedupeTavilyFindings(findings: Finding[]): Finding[] {
+  const seen = new Set<string>();
+  const deduped: Finding[] = [];
+
+  for (const finding of findings) {
+    const key = finding.url.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(finding);
+  }
+
+  return deduped;
 }
 
 // --- Pioneer (extraction + clues, multi-head) -----------------------------

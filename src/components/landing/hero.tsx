@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { ChevronRight, Sparkles } from "lucide-react";
 
 export function LandingHero() {
   return (
@@ -67,7 +67,7 @@ export function LandingHero() {
           </dl>
         </div>
 
-        <HeroDemoCard />
+        <HeroCascadeCard />
       </div>
     </section>
   );
@@ -120,7 +120,7 @@ function BackgroundOrnament() {
   );
 }
 
-function HeroDemoCard() {
+function HeroCascadeCard() {
   return (
     <div className="relative">
       <div className="absolute -inset-4 -z-10 rounded-[var(--radius-lg)] bg-accent/8 blur-3xl" />
@@ -166,7 +166,7 @@ function HeroDemoCard() {
 
       <div className="mt-3 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">
         <span>↑ higher score = more interrupt-worthy</span>
-        <span>live demo · fixtures</span>
+        <span>3-stage cascade · live telemetry</span>
       </div>
     </div>
   );
@@ -179,29 +179,28 @@ function CascadeDiagram() {
     { label: "Gemini", sub: "reason · next", ms: "0.17s" },
   ];
   return (
-    <div className="relative px-5 py-6">
-      <div className="grid grid-cols-3 gap-3">
+    <div className="px-4 py-6 sm:px-5">
+      <div className="flex items-stretch">
         {stages.map((s, i) => (
-          <div
-            key={s.label}
-            className="relative rounded-[var(--radius)] border border-rule bg-bg-elev p-3"
-          >
-            <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.16em] text-ink-mute">
-              <span>0{i + 1}</span>
-              <span>{s.ms}</span>
+          <div key={s.label} className="contents">
+            <div className="min-w-0 flex-1 rounded-[var(--radius)] border border-rule bg-bg-elev p-2.5 sm:p-3">
+              <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.16em] text-ink-mute">
+                <span>0{i + 1}</span>
+                <span>{s.ms}</span>
+              </div>
+              <div className="mt-2 font-display text-[17px] leading-none tracking-display sm:text-[20px]">
+                {s.label}
+              </div>
+              <div className="mt-1.5 text-[10px] text-ink-3 sm:text-[11px]">{s.sub}</div>
             </div>
-            <div className="mt-2 font-display text-[20px] leading-none tracking-display">
-              {s.label}
-            </div>
-            <div className="mt-1.5 text-[11px] text-ink-3">{s.sub}</div>
+            {i < stages.length - 1 ? (
+              <div className="flex w-5 shrink-0 items-center justify-center self-center text-accent sm:w-6">
+                <ChevronRight className="h-4 w-4" strokeWidth={2} />
+              </div>
+            ) : null}
           </div>
         ))}
       </div>
-      <div className="pointer-events-none absolute inset-x-5 top-1/2 -z-0 h-px -translate-y-1/2 bg-rule" />
-      <div
-        className="pointer-events-none absolute top-1/2 -z-0 h-px w-12 -translate-y-1/2 bg-accent"
-        style={{ animation: "flow 2.4s var(--ease) infinite" }}
-      />
     </div>
   );
 }

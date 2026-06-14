@@ -154,6 +154,7 @@ private struct NegotiationDetailView: View {
     @State private var detail: NegotiationDetail?
     @State private var isLoading = true
     @State private var errorMessage: String?
+    @State private var isResponding = false
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: true) {
@@ -211,12 +212,26 @@ private struct NegotiationDetailView: View {
 
             if detail.negotiation.status == .awaitingUser {
                 VStack(alignment: .leading, spacing: 10) {
+                    Text("YOUR RESPONSE")
+                        .font(.caption.weight(.bold))
+                        .tracking(0.6)
+                        .appMuted()
+                    IntentActionRow(
+                        negotiationId: detail.negotiation.id,
+                        isResponding: $isResponding
+                    ) { updated in
+                        self.detail = updated
+                    }
                     Text("TRADE-OFF OPTIONS")
                         .font(.caption.weight(.bold))
                         .tracking(0.6)
                         .appMuted()
                     ForEach(detail.pendingOptions) { option in
-                        TradeoffCard(option: option, negotiationId: detail.negotiation.id) { updated in
+                        TradeoffCard(
+                            option: option,
+                            negotiationId: detail.negotiation.id,
+                            isResponding: $isResponding
+                        ) { updated in
                             self.detail = updated
                         }
                     }
@@ -305,10 +320,74 @@ private struct MessageBubble: View {
     }
 }
 
+private struct IntentActionRow: View {
+    @Environment(NegotiationClient.self) private var negotiations
+    let negotiationId: String
+    @Binding var isResponding: Bool
+    let onUpdate: (NegotiationDetail) -> Void
+
+    @State private var acting: NegotiationIntent?
+    @State private var errorMessage: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Button {
+                    Task { await act(.accept) }
+                } label: {
+                    Label(acting == .accept ? "Accepting…" : "Accept", systemImage: "checkmark.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(AppTheme.slateInk, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .foregroundStyle(.white)
+                }
+                .disabled(isResponding)
+
+                Button {
+                    Task { await act(.deny) }
+                } label: {
+                    Label(acting == .deny ? "Denying…" : "Deny", systemImage: "xmark.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(AppTheme.danger.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .foregroundStyle(AppTheme.danger)
+                }
+                .disabled(isResponding)
+            }
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.danger)
+            }
+        }
+    }
+
+    private func act(_ intent: NegotiationIntent) async {
+        guard !isResponding else { return }
+        isResponding = true
+        acting = intent
+        errorMessage = nil
+        defer {
+            acting = nil
+            isResponding = false
+        }
+        do {
+            let detail = try await negotiations.respondWithIntent(negotiationId: negotiationId, intent: intent)
+            onUpdate(detail)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
 private struct TradeoffCard: View {
     @Environment(NegotiationClient.self) private var negotiations
     let option: CounterpartyTradeoffOption
     let negotiationId: String
+    @Binding var isResponding: Bool
     let onUpdate: (NegotiationDetail) -> Void
 
     @State private var values: [String: String] = [:]
@@ -336,6 +415,7 @@ private struct TradeoffCard: View {
                         }
                     }
                     .pickerStyle(.menu)
+                    .disabled(isResponding)
                 }
             }
 
@@ -355,7 +435,7 @@ private struct TradeoffCard: View {
                     .background(AppTheme.slateInk, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .foregroundStyle(.white)
             }
-            .disabled(isSending)
+            .disabled(isResponding)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -375,9 +455,14 @@ private struct TradeoffCard: View {
     }
 
     private func send() async {
+        guard !isResponding else { return }
+        isResponding = true
         isSending = true
         errorMessage = nil
-        defer { isSending = false }
+        defer {
+            isSending = false
+            isResponding = false
+        }
         do {
             let detail = try await negotiations.respond(
                 negotiationId: negotiationId,

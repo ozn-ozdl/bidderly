@@ -6,6 +6,7 @@ import { defaultTheme } from "@/lib/theme";
 import { LandingHero } from "@/components/landing/hero";
 import { LandingCascade } from "@/components/landing/cascade";
 import { LandingFindings } from "@/components/landing/findings";
+import { LandingIosCompanion } from "@/components/landing/ios-companion";
 import { LandingSources } from "@/components/landing/sources";
 import { LandingStack } from "@/components/landing/stack";
 import { LandingPrivacy } from "@/components/landing/privacy";
@@ -21,6 +22,7 @@ export default function HomePage() {
         <LandingHero />
         <LandingCascade />
         <LandingFindings />
+        <LandingIosCompanion />
         <LandingSources />
         <LandingStack />
         <LandingPrivacy />
@@ -45,6 +47,9 @@ function SiteHeader({ clerkConfigured }: { clerkConfigured: boolean }) {
           </Link>
           <Link href="#findings" className="hover:text-ink">
             What it finds
+          </Link>
+          <Link href="#ios" className="hover:text-ink">
+            iOS
           </Link>
           <Link href="#stack" className="hover:text-ink">
             Stack

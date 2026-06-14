@@ -12,8 +12,10 @@ import {
   scoreWithGemma,
   searchTenderSignals,
 } from "./provider-clients";
+import { mockTenderBaseUrl } from "@/lib/mock-tender-config";
 import { scrapeTenderPages, type RawPage } from "@/lib/scraper";
 import { isPioneerDryRun } from "@/lib/pioneer";
+import { buildTavilyScoutRequest } from "@/lib/tavily-scout";
 import type {
   AgentEvent,
   ApprovalRequest,
@@ -38,10 +40,6 @@ export async function buildRadarSnapshot() {
 // service: TED EU, Bund.de, stadt.muenchen.de, berlin.de. The scraper
 // follows the internal links each portal home exposes, so a single
 // entry per portal produces ~3 tender detail pages per run.
-
-function mockTenderBaseUrl(): string {
-  return process.env.MOCK_TENDER_BASE_URL ?? "http://localhost:3002";
-}
 
 const MOCK_TENDER_PORTALS: Source[] = [
   {
@@ -183,7 +181,7 @@ export async function runScoutPipeline(): Promise<{
   try {
     const tavilyFindings = await searchTenderSignals();
     tavilyResultsCount = tavilyFindings.length;
-    tavilyQuery = process.env.TAVILY_SCOUT_QUERY ?? "";
+    tavilyQuery = buildTavilyScoutRequest().query;
     findings.push(...tavilyFindings);
   } catch (err) {
     warnings.push(`tavily: ${err instanceof Error ? err.message : String(err)}`);

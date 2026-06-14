@@ -14,7 +14,7 @@ export function LandingPrivacy() {
             </h2>
             <p className="mt-5 max-w-md text-[15px] leading-[1.6] text-ink-2">
               Bidderly is a research tool, not a tracker. We watch public tender portals,
-              council project pages, and curated demo feeds. We do not crawl behind logins,
+              council project pages, and curated enrichment feeds. We do not crawl behind logins,
               store personal data of buyers, or share findings with third parties.
             </p>
           </div>
@@ -33,8 +33,8 @@ export function LandingPrivacy() {
               body="Findings, scores, and approvals live in your Postgres. Export at any time."
             />
             <Promise
-              title="Local-first demo"
-              body="Fixtures work without any provider keys. Production adapters plug into the same model."
+              title="Self-contained fallback"
+              body="Runs without provider keys when needed. Production adapters plug into the same cascade."
             />
           </ul>
         </div>

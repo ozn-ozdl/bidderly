@@ -32,6 +32,12 @@ export const metadata: Metadata = {
     "Proactive tender and procurement opportunity radar for German and EU sales teams. GLiNER2 → Gemma 4 → Gemini cascade.",
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover" as const,
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{

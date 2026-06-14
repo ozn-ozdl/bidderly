@@ -22,7 +22,7 @@ export function LandingFooter() {
           links={[
             { label: "Live radar", href: "/radar" },
             { label: "Direction preview", href: "/direction-preview" },
-            { label: "Demo script", href: "/radar#demo" },
+            { label: "How it works", href: "#cascade" },
           ]}
         />
         <FooterColumn

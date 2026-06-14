@@ -47,7 +47,7 @@ export function LandingStack() {
             </h2>
             <p className="mt-5 max-w-md text-[15px] leading-[1.6] text-ink-2">
               All partner technology is wired through a typed adapter layer. The same flow works
-              with fixtures in demo mode or with live provider keys in production.
+              with or without live provider keys — one cascade, one data model.
             </p>
           </div>
 

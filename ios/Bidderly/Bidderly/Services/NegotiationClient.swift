@@ -114,6 +114,28 @@ final class NegotiationClient {
         return detail
     }
 
+    func respondWithIntent(
+        negotiationId: String,
+        intent: NegotiationIntent
+    ) async throws -> NegotiationDetail {
+        guard intent == .accept || intent == .deny else {
+            throw NegotiationClientError.api("intent must be accept or deny")
+        }
+        var request = URLRequest(url: baseURL.appending(path: "api/negotiations/\(negotiationId)/respond"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        await request.applyAuth()
+        request.httpBody = try JSONEncoder().encode(["intent": intent.rawValue])
+        let (data, response) = try await session.data(for: request)
+        try Self.ensureOK(response)
+        let payload = try RadarClient.decoder.decode(NegotiationRespondResponse.self, from: data)
+        guard payload.ok, let detail = payload.detail else {
+            throw NegotiationClientError.api(payload.error ?? "respond failed")
+        }
+        await refresh()
+        return detail
+    }
+
     func reset() async {
         do {
             var request = URLRequest(url: baseURL.appending(path: "api/negotiations/reset"))
