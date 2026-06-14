@@ -1,0 +1,19 @@
+{
+  "name": "bidderly-mock-sites",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mock tender portals scraped by the Bidderly.live cascade. Four distinct visual themes (TED EU, Bund.de, Munich, Berlin) so the fine-tuned Pioneer NER + classification models are exercised on varied structure.",
+  "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.1",
+    "@fastify/static": "^8.0.4",
+    "fastify": "^5.1.0"
+  }
+}

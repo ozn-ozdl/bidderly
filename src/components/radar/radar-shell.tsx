@@ -19,17 +19,25 @@ import { PipelineView } from "./views/pipeline-view";
 import { ApprovalsView } from "./views/approvals-view";
 import { InsightsView } from "@/components/insights/insights-view";
 import { PioneerView } from "./views/pioneer-view";
+import { NegotiationsView } from "@/components/negotiations/negotiations-view";
 import { FindingDrawer } from "./finding-drawer";
 import { ApprovalToast } from "./approval-toast";
 
 type RadarShellProps = {
   initialSnapshot: RadarSnapshot;
   integrationStatus: IntegrationStatus;
+  initialView?: SidebarKey;
+  initialNegotiationId?: string;
 };
 
 type ApprovalStatus = ApprovalRequest["status"];
 
-export function RadarShell({ initialSnapshot, integrationStatus }: RadarShellProps) {
+export function RadarShell({
+  initialSnapshot,
+  integrationStatus,
+  initialView = "radar",
+  initialNegotiationId,
+}: RadarShellProps) {
   const [snapshot, setSnapshot] = useState(initialSnapshot);
   const [liveEvents, setLiveEvents] = useState<AgentEvent[]>(initialSnapshot.events);
   const [selectedFindingId, setSelectedFindingId] = useState(
@@ -37,7 +45,7 @@ export function RadarShell({ initialSnapshot, integrationStatus }: RadarShellPro
   );
   const [isRunning, setIsRunning] = useState(false);
   const [approvalStatuses, setApprovalStatuses] = useState<Record<string, ApprovalStatus>>({});
-  const [activeView, setActiveView] = useState<SidebarKey>("radar");
+  const [activeView, setActiveView] = useState<SidebarKey>(initialView);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const { state: userState, actions: userActions } = useUserState();
@@ -102,6 +110,13 @@ export function RadarShell({ initialSnapshot, integrationStatus }: RadarShellPro
       const findingId = snapshot.approvals.find((approval) => approval.id === id)?.findingId ?? id;
       userActions.setDismissed(findingId, false);
       userActions.setApproval(findingId, status);
+      if (status === "approved") {
+        void fetch("/api/negotiations/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ approvalId: id }),
+        }).catch((error) => console.error("[negotiations] start failed", error));
+      }
     },
     [snapshot.approvals, userActions],
   );
@@ -252,6 +267,10 @@ export function RadarShell({ initialSnapshot, integrationStatus }: RadarShellPro
             {activeView === "insights" ? <InsightsView snapshot={snapshot} /> : null}
 
             {activeView === "pioneer" ? <PioneerView /> : null}
+
+            {activeView === "negotiations" ? (
+              <NegotiationsView initialSelectedId={initialNegotiationId} />
+            ) : null}
 
             {activeView === "approvals" ? (
               <ApprovalsView

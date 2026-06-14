@@ -88,9 +88,13 @@ struct SettingsView: View {
             diagRow("Clerk", on: integrations?.clerk ?? false)
             diagRow("Database", on: integrations?.database ?? false)
             diagRow("Tavily", on: integrations?.tavily ?? false)
-            diagRow("Pioneer GLiNER", on: integrations?.pioneerGliner ?? false)
-            diagRow("Pioneer Gemma 4", on: integrations?.pioneerGemma ?? false)
+            diagRow("Pioneer GLiNER2", on: integrations?.pioneerGliner2 ?? false)
+            diagRow("Pioneer clues", on: integrations?.pioneerClues ?? false)
+            diagRow("Pioneer scoring", on: integrations?.pioneerScoring ?? false)
             diagRow("Gemini", on: integrations?.gemini ?? false)
+            if let mockUrl = integrations?.mockTenderBaseUrl, !mockUrl.isEmpty {
+                row("Mock portals", value: mockUrl, mono: true)
+            }
         }
         .cardStyle()
     }

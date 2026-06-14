@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MainTabView: View {
     @Environment(RadarClient.self) private var radar
+    @Environment(NegotiationClient.self) private var negotiations
     @Environment(AlarmManager.self) private var alarm
     @Environment(UserStateStore.self) private var userState
     @Environment(RealtimeClient.self) private var realtime
@@ -22,9 +23,13 @@ struct MainTabView: View {
                 }
                 .tag(1)
 
+            NegotiationsView()
+                .tabItem { Label("Negotiations", systemImage: "bubble.left.and.bubble.right") }
+                .tag(2)
+
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "gearshape") }
-                .tag(2)
+                .tag(3)
         }
         .tint(AppTheme.deepTeal)
         .overlay(alarmOverlay)
@@ -41,10 +46,6 @@ struct MainTabView: View {
                 await radar.refresh()
                 checkPendingAlarms()
             }
-        }
-        .refreshable {
-            await radar.refresh()
-            checkPendingAlarms()
         }
         .onDisappear {
             realtime.disconnect()
@@ -75,6 +76,7 @@ struct MainTabView: View {
     private func handleApprove() {
         guard let id = alarm.activeAlarm?.id else { return }
         radar.update(approvalId: id, status: .approved)
+        Task { await negotiations.start(approvalId: id) }
         alarm.dismiss()
         selection = 1
     }

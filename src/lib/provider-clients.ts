@@ -55,8 +55,12 @@ export async function searchTenderSignals() {
         : {}),
     },
     body: JSON.stringify({
+      // Default query: scope the search to the mock-sites Railway
+      // service the cascade actually scrapes. Operators can override
+      // with TAVILY_SCOUT_QUERY for a different demo.
       query:
-        "Germany EU public procurement software tender pre-announcement supplier call budget deadline",
+        process.env.TAVILY_SCOUT_QUERY ??
+        `${process.env.MOCK_TENDER_BASE_URL ?? "http://localhost:3002"} tender OR beschaffung OR vergabe OR ausschreibung`,
       search_depth: "basic",
       max_results: 5,
       include_answer: false,
@@ -119,12 +123,24 @@ const ENTITY_LABEL_TO_FIELD: Record<string, keyof Extraction["entities"]> = {
 };
 
 export async function extractWithGliner(finding: Finding): Promise<Extraction> {
+  // The cascade may be configured to use two separate Pioneer
+  // models: one for entity extraction and one for clue classification.
+  // When PIONEER_CLUES_MODEL is set and differs from the entity
+  // model, we route the clues head to its own model id. The
+  // multi-head single-call path stays in place for the case where
+  // the operator trains one combined model.
+  const entityModelId = process.env.PIONEER_GLINER2_MODEL ?? "fastino/gliner2-base-v1";
+  const cluesModelId = process.env.PIONEER_CLUES_MODEL ?? entityModelId;
+  const useSeparateCluesModel = cluesModelId !== entityModelId;
+
   const result = await inferExtractionAndClues({
     id: finding.id,
     rawText: finding.rawText,
     sourceType: finding.sourceType,
     url: finding.url,
     detectedLanguage: finding.detectedLanguage,
+    entityModelId: useSeparateCluesModel ? entityModelId : undefined,
+    cluesModelId: useSeparateCluesModel ? cluesModelId : undefined,
   });
 
   const entities: Partial<Extraction["entities"]> = {};
@@ -138,7 +154,9 @@ export async function extractWithGliner(finding: Finding): Promise<Extraction> {
   return {
     id: `ext_${finding.id}`,
     findingId: finding.id,
-    model: "fine-tuned GLiNER2 procurement radar",
+    model: useSeparateCluesModel
+      ? "fine-tuned GLiNER2 (NER) + fine-tuned GLiNER2 (clues)"
+      : "fine-tuned GLiNER2 procurement radar",
     confidence: result.confidence,
     entities,
     clueTags: result.clueTags as ProcurementClue[],

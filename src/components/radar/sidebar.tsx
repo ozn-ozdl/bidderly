@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { Radar, GitBranch, BellRing, BarChart3, Sparkles } from "lucide-react";
+import { Radar, GitBranch, BellRing, BarChart3, Sparkles, MessagesSquare } from "lucide-react";
 import { BrandMark } from "@/components/ui/brand";
 import { defaultTheme } from "@/lib/theme";
 import { cn } from "@/lib/cn";
 
-export type SidebarKey = "radar" | "pipeline" | "approvals" | "insights" | "pioneer";
+export type SidebarKey = "radar" | "pipeline" | "approvals" | "negotiations" | "insights" | "pioneer";
 
 type Item = {
   key: SidebarKey;
@@ -18,6 +18,7 @@ const items: Item[] = [
   { key: "radar", label: "Radar", icon: Radar },
   { key: "pipeline", label: "Pipeline", icon: GitBranch },
   { key: "approvals", label: "Approvals", icon: BellRing },
+  { key: "negotiations", label: "Negotiations", icon: MessagesSquare },
   { key: "insights", label: "Insights", icon: BarChart3 },
   { key: "pioneer", label: "Pioneer", icon: Sparkles },
 ];

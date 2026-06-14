@@ -13,6 +13,7 @@ import ClerkKitUI
 struct BidderlyApp: App {
     @State private var alarm: AlarmManager
     @State private var radar: RadarClient
+    @State private var negotiations: NegotiationClient
     @State private var userState: UserStateStore
     @State private var realtime: RealtimeClient
     private let clerk: Clerk
@@ -21,14 +22,17 @@ struct BidderlyApp: App {
         let stateStore = UserStateStore()
         let realtimeClient = RealtimeClient(stateStore: stateStore)
         let radarClient = RadarClient(userState: stateStore, realtime: realtimeClient)
+        let negotiationClient = NegotiationClient()
 
         _alarm = State(initialValue: AlarmManager())
         _userState = State(initialValue: stateStore)
         _realtime = State(initialValue: realtimeClient)
         _radar = State(initialValue: radarClient)
+        _negotiations = State(initialValue: negotiationClient)
 
         clerk = Clerk.configure(publishableKey: AppConfig.clerkPublishableKey)
         ApprovalActions.shared.client = radarClient
+        ApprovalActions.shared.negotiations = negotiationClient
     }
 
     var body: some Scene {
@@ -36,6 +40,7 @@ struct BidderlyApp: App {
             RootView()
                 .environment(clerk)
                 .environment(radar)
+                .environment(negotiations)
                 .environment(userState)
                 .environment(realtime)
                 .environment(alarm)

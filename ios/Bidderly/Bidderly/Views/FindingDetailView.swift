@@ -266,8 +266,13 @@ struct FindingDetailView: View {
 final class ApprovalActions {
     static let shared = ApprovalActions()
     weak var client: RadarClient?
+    weak var negotiations: NegotiationClient?
 
-    func approve(_ id: String) { client?.update(approvalId: id, status: .approved) }
+    func approve(_ id: String) {
+        client?.update(approvalId: id, status: .approved)
+        Task { await negotiations?.start(approvalId: id) }
+    }
+
     func needsInfo(_ id: String) { client?.update(approvalId: id, status: .needsInfo) }
     func status(for id: String) -> ApprovalStatus? { client?.status(forApprovalId: id) }
 }

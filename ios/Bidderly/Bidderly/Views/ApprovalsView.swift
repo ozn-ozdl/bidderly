@@ -56,6 +56,7 @@ struct ApprovalsView: View {
 /// 3. What happens if I act? (consequence line + decide buttons)
 struct ApprovalCard: View {
     @Environment(RadarClient.self) private var radar
+    @Environment(NegotiationClient.self) private var negotiations
     let approval: ApprovalRequest
 
     private var status: ApprovalStatus {
@@ -216,6 +217,7 @@ struct ApprovalCard: View {
         HStack(spacing: 10) {
             Button {
                 radar.update(approvalId: approval.id, status: .approved)
+                Task { await negotiations.start(approvalId: approval.id) }
             } label: {
                 Label("Approve", systemImage: "checkmark.circle.fill")
                     .frame(maxWidth: .infinity)

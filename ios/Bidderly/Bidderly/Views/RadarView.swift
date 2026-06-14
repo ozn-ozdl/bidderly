@@ -84,6 +84,9 @@ struct RadarView: View {
                     .disabled(radar.isRunningScout)
                 }
             }
+            .refreshable {
+                await radar.refresh()
+            }
         }
     }
 }

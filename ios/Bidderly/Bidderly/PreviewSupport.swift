@@ -96,10 +96,13 @@ enum PreviewSupport {
             clerk: false,
             database: false,
             tavily: true,
-            pioneerGliner: false,
-            pioneerGemma: false,
+            pioneerGliner2: false,
+            pioneerClues: false,
+            pioneerScoring: false,
+            pioneerDryRun: true,
+            mockTenderBaseUrl: nil,
             gemini: false,
-            missing: ["PIONEER_GLINER_ENDPOINT", "PIONEER_GEMMA4_ENDPOINT", "GEMINI_API_KEY"]
+            missing: ["PIONEER_GLINER2_MODEL", "PIONEER_GEMMA4_MODEL", "GEMINI_API_KEY"]
         )
 
         return RadarSnapshot(
@@ -152,6 +155,12 @@ enum PreviewSupport {
                 baseURL: URL(string: "wss://example.invalid")!,
                 stateStore: UserStateStore()
             )
+        }
+    }
+
+    nonisolated static func makeNegotiationClient() -> NegotiationClient {
+        MainActor.assumeIsolated {
+            NegotiationClient(baseURL: URL(string: "https://example.invalid")!)
         }
     }
 

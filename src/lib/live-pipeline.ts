@@ -31,18 +31,46 @@ export async function buildRadarSnapshot() {
   return getRadarSnapshot();
 }
 
-// --- Mock tender sources (resolved against public/mock-tenders) ----------
+// --- Mock tender sources (resolved against the standalone mock-sites
+//     Railway service) ---------------------------------------------------
+//
+// Four distinct mock tender portals hosted by the bidderly-mock-sites
+// service: TED EU, Bund.de, stadt.muenchen.de, berlin.de. The scraper
+// follows the internal links each portal home exposes, so a single
+// entry per portal produces ~3 tender detail pages per run.
 
 function mockTenderBaseUrl(): string {
-  return process.env.MOCK_TENDER_BASE_URL ?? "http://localhost:3000/mock-tenders";
+  return process.env.MOCK_TENDER_BASE_URL ?? "http://localhost:3002";
 }
 
-const MOCK_TENDER_SOURCES: Source[] = [
+const MOCK_TENDER_PORTALS: Source[] = [
   {
-    id: "src_mock_munich",
-    name: "Mock tender portal — Munich school network",
+    id: "src_mock_ted_eu",
+    name: "Mock portal — TED EU",
     type: "public_tender_portal",
-    url: `${mockTenderBaseUrl()}/munich-it.html`,
+    url: `${mockTenderBaseUrl()}/ted-eu/`,
+    geography: "European Union",
+    cadence: "Scraper run (Tavily → home → detail links)",
+    status: "healthy",
+    lastCheckedAt: new Date().toISOString(),
+    findingsToday: 0,
+  },
+  {
+    id: "src_mock_bund_de",
+    name: "Mock portal — Bund.de",
+    type: "public_tender_portal",
+    url: `${mockTenderBaseUrl()}/bund-de/`,
+    geography: "Germany (federal)",
+    cadence: "Scraper run",
+    status: "healthy",
+    lastCheckedAt: new Date().toISOString(),
+    findingsToday: 0,
+  },
+  {
+    id: "src_mock_stadt_muenchen",
+    name: "Mock portal — stadt.muenchen.de",
+    type: "council_project_page",
+    url: `${mockTenderBaseUrl()}/stadt-muenchen/`,
     geography: "Bavaria",
     cadence: "Scraper run",
     status: "healthy",
@@ -50,77 +78,11 @@ const MOCK_TENDER_SOURCES: Source[] = [
     findingsToday: 0,
   },
   {
-    id: "src_mock_berlin",
-    name: "Mock tender portal — Berlin solar roofs",
-    type: "public_tender_portal",
-    url: `${mockTenderBaseUrl()}/berlin-solar.html`,
+    id: "src_mock_berlin_de",
+    name: "Mock portal — berlin.de",
+    type: "procurement_page",
+    url: `${mockTenderBaseUrl()}/berlin-de/`,
     geography: "Berlin",
-    cadence: "Scraper run",
-    status: "healthy",
-    lastCheckedAt: new Date().toISOString(),
-    findingsToday: 0,
-  },
-  {
-    id: "src_mock_hamburg",
-    name: "Mock tender portal — Hamburg supplier day",
-    type: "procurement_page",
-    url: `${mockTenderBaseUrl()}/hamburg-supplier-day.html`,
-    geography: "Hamburg",
-    cadence: "Scraper run",
-    status: "healthy",
-    lastCheckedAt: new Date().toISOString(),
-    findingsToday: 0,
-  },
-  {
-    id: "src_mock_eu",
-    name: "Mock tender portal — EU digital services",
-    type: "public_tender_portal",
-    url: `${mockTenderBaseUrl()}/eu-digital-services.html`,
-    geography: "European Union",
-    cadence: "Scraper run",
-    status: "healthy",
-    lastCheckedAt: new Date().toISOString(),
-    findingsToday: 0,
-  },
-  {
-    id: "src_mock_cologne",
-    name: "Mock tender portal — Cologne duplicate",
-    type: "public_tender_portal",
-    url: `${mockTenderBaseUrl()}/cologne-duplicate.html`,
-    geography: "North Rhine-Westphalia",
-    cadence: "Scraper run",
-    status: "healthy",
-    lastCheckedAt: new Date().toISOString(),
-    findingsToday: 0,
-  },
-  {
-    id: "src_mock_breakfast",
-    name: "Mock tender portal — IT leaders breakfast",
-    type: "curated_demo_feed",
-    url: `${mockTenderBaseUrl()}/network-breakfast.html`,
-    geography: "Germany",
-    cadence: "Scraper run",
-    status: "healthy",
-    lastCheckedAt: new Date().toISOString(),
-    findingsToday: 0,
-  },
-  {
-    id: "src_mock_stuttgart",
-    name: "Mock tender portal — Stuttgart energy follow-up",
-    type: "procurement_page",
-    url: `${mockTenderBaseUrl()}/stuttgart-energy.html`,
-    geography: "Baden-Württemberg",
-    cadence: "Scraper run",
-    status: "healthy",
-    lastCheckedAt: new Date().toISOString(),
-    findingsToday: 0,
-  },
-  {
-    id: "src_mock_bremen",
-    name: "Mock tender portal — Bremen document management (expired)",
-    type: "procurement_page",
-    url: `${mockTenderBaseUrl()}/bremen-expired.html`,
-    geography: "Bremen",
     cadence: "Scraper run",
     status: "healthy",
     lastCheckedAt: new Date().toISOString(),
@@ -130,12 +92,18 @@ const MOCK_TENDER_SOURCES: Source[] = [
 
 function pageToFinding(page: RawPage, source: Source): Finding {
   const fallbackId = `find_scraped_${stableId(page.url)}`;
+  // A detail page (has tender-id meta) becomes its own finding; a
+  // portal home (no tender-id) gets a stable id derived from the url
+  // and a placeholder title so the cascade still scores it.
+  const title = page.title
+    ? `${source.name.replace(/^Mock portal — /, "")} · ${page.title}`
+    : source.name;
   return {
     id: page.tenderId ?? fallbackId,
     sourceId: source.id,
     sourceName: source.name,
     sourceType: source.type as SourceType,
-    title: page.title ?? `Scraped: ${new URL(page.url).pathname.split("/").pop() ?? page.url}`,
+    title,
     url: page.finalUrl,
     rawText: page.rawText,
     detectedLanguage: page.detectedLanguage,
@@ -158,6 +126,7 @@ export async function runScoutPipeline(): Promise<{
   source: "fixture" | "live";
   warnings: string[];
   scraper?: { pages: number; failures: number; durationMs: number };
+  tavily?: { results: number; query: string };
 }> {
   const status = getIntegrationStatus();
 
@@ -177,18 +146,23 @@ export async function runScoutPipeline(): Promise<{
   const events: AgentEvent[] = [];
 
   // --- 1. Scraper stage --------------------------------------------------
+  // Fetch the 4 portal home pages, then follow the tender-detail
+  // links each home exposes. The scraper's allow-list covers
+  // MOCK_TENDER_BASE_URL via env.
   const scraperStart = Date.now();
-  const scrapeResult = await scrapeTenderPages(MOCK_TENDER_SOURCES);
+  const scrapeResult = await scrapeTenderPages(MOCK_TENDER_PORTALS, {
+    followLinks: true,
+    maxLinksPerPortal: 8,
+  });
   const scraperDurationMs = Date.now() - scraperStart;
   const findings: Finding[] = [];
-  for (const source of MOCK_TENDER_SOURCES) {
-    const page = scrapeResult.pages.find((p) => p.url === source.url);
-    if (page) {
-      findings.push(pageToFinding(page, source));
-    } else {
-      const failure = scrapeResult.failures.find((f) => f.url === source.url);
-      if (failure) warnings.push(`scraper ${source.name}: ${failure.reason}`);
-    }
+  for (const page of scrapeResult.pages) {
+    const source = sourceForPage(page.url, MOCK_TENDER_PORTALS);
+    if (!source) continue;
+    findings.push(pageToFinding(page, source));
+  }
+  for (const failure of scrapeResult.failures) {
+    warnings.push(`scraper ${failure.url}: ${failure.reason}`);
   }
   if (findings.length > 0) {
     events.push({
@@ -202,8 +176,14 @@ export async function runScoutPipeline(): Promise<{
   }
 
   // --- 2. Tavily enrichment --------------------------------------------
+  // Tavily discovers URLs across the web and the live portal list;
+  // the resulting findings augment the scraped set.
+  let tavilyResultsCount = 0;
+  let tavilyQuery = "";
   try {
     const tavilyFindings = await searchTenderSignals();
+    tavilyResultsCount = tavilyFindings.length;
+    tavilyQuery = process.env.TAVILY_SCOUT_QUERY ?? "";
     findings.push(...tavilyFindings);
   } catch (err) {
     warnings.push(`tavily: ${err instanceof Error ? err.message : String(err)}`);
@@ -214,7 +194,7 @@ export async function runScoutPipeline(): Promise<{
     mode: "scheduled",
     startedAt: startedAt.toISOString(),
     status: "running",
-    sourcesScanned: MOCK_TENDER_SOURCES.length,
+    sourcesScanned: MOCK_TENDER_PORTALS.length + 1,
     findingsDiscovered: findings.length,
   };
   events.unshift({
@@ -223,7 +203,7 @@ export async function runScoutPipeline(): Promise<{
     role: "research_scout",
     type: "scout_started",
     title: "Live scout run started",
-    detail: `Scraping ${MOCK_TENDER_SOURCES.length} mock tender portals with Pioneer pipeline.`,
+    detail: `Tavily → 4 mock portals → ${MOCK_TENDER_PORTALS.length} portal homes with link follow → Pioneer fine-tuned cascade.`,
   });
 
   const extractions = [];
@@ -334,17 +314,21 @@ export async function runScoutPipeline(): Promise<{
         url: "https://api.tavily.com/search",
         geography: "Germany / EU",
         cadence: "Manual or cron",
-        status: warnings.length > 0 ? "degraded" : "healthy",
-        lastCheckedAt: finishedAt,
-        findingsToday: findings.length,
-      },
-      ...MOCK_TENDER_SOURCES.map((source) => ({
-        ...source,
-        status: warnings.some((w) => w.startsWith(`scraper ${source.name}`))
+        status: warnings.some((w) => w.startsWith("tavily"))
           ? ("degraded" as const)
           : ("healthy" as const),
         lastCheckedAt: finishedAt,
-        findingsToday: scrapeResult.pages.filter((p) => p.url === source.url).length,
+        findingsToday: tavilyResultsCount,
+      },
+      ...MOCK_TENDER_PORTALS.map((source) => ({
+        ...source,
+        status: warnings.some((w) => w.includes(source.name))
+          ? ("degraded" as const)
+          : ("healthy" as const),
+        lastCheckedAt: finishedAt,
+        findingsToday: scrapeResult.pages.filter(
+          (p) => sourceForPage(p.url, MOCK_TENDER_PORTALS)?.id === source.id,
+        ).length,
       })),
     ],
     findings,
@@ -400,5 +384,25 @@ export async function runScoutPipeline(): Promise<{
       failures: scrapeResult.failures.length,
       durationMs: scraperDurationMs,
     },
+    tavily: {
+      results: tavilyResultsCount,
+      query: tavilyQuery,
+    },
   };
+}
+
+function sourceForPage(
+  pageUrl: string,
+  portals: Source[],
+): Source | undefined {
+  const parsed = new URL(pageUrl);
+  for (const portal of portals) {
+    const portalUrl = new URL(portal.url);
+    if (portalUrl.host !== parsed.host) continue;
+    const portalPath = portalUrl.pathname.replace(/\/$/, "");
+    if (parsed.pathname === portalPath || parsed.pathname.startsWith(`${portalPath}/`)) {
+      return portal;
+    }
+  }
+  return undefined;
 }

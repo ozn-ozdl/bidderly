@@ -56,3 +56,48 @@ export function parseTenderPage(html: string): ParsedPage {
 export function detectLanguageHeuristic(text: string): "de" | "en" {
   return /[äöüß]|\b(der|die|das|und|fuer|für|ist|ein|eine)\b/i.test(text) ? "de" : "en";
 }
+
+// --- Listing-link follower -------------------------------------------------
+//
+// Portal home pages list tender detail pages as `<a href="…">` links.
+// When the scraper fetches a portal home, this helper extracts the
+// internal link targets so the live pipeline can enqueue each
+// detail page in the same scout run.
+
+const HREF_RE = /<a\s+[^>]*href=["']([^"']+)["'][^>]*>/gi;
+
+export function extractInternalLinks(html: string, baseUrl: string): string[] {
+  const links = new Set<string>();
+  let match: RegExpExecArray | null;
+  while ((match = HREF_RE.exec(html)) !== null) {
+    const href = match[1] ?? "";
+    if (!href) continue;
+    // Skip non-html links, in-page anchors, mailto/tel, etc.
+    if (
+      href.startsWith("#") ||
+      href.startsWith("mailto:") ||
+      href.startsWith("tel:") ||
+      href.startsWith("javascript:")
+    ) {
+      continue;
+    }
+    // Skip assets.
+    if (/\.(css|js|png|jpg|jpeg|svg|ico|webp|gif|pdf)(?:\?|$)/i.test(href)) {
+      continue;
+    }
+    let absolute: URL;
+    try {
+      absolute = new URL(href, baseUrl);
+    } catch {
+      continue;
+    }
+    // Only same-origin links.
+    if (absolute.origin !== new URL(baseUrl).origin) continue;
+    // Trim hash and trailing slash differences.
+    absolute.hash = "";
+    let href2 = absolute.toString();
+    if (href2.endsWith("/")) href2 = href2.slice(0, -1);
+    links.add(href2);
+  }
+  return Array.from(links);
+}

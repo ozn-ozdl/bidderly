@@ -115,7 +115,9 @@ export type Finding = {
 export type Extraction = {
   id: string;
   findingId: string;
-  model: "fine-tuned GLiNER2 procurement radar";
+  model:
+    | "fine-tuned GLiNER2 procurement radar"
+    | "fine-tuned GLiNER2 (NER) + fine-tuned GLiNER2 (clues)";
   confidence: number;
   entities: ExtractedEntities;
   clueTags: ProcurementClue[];
@@ -208,4 +210,108 @@ export type SyntheticTrainingExample = {
   clueLabels: ProcurementClue[];
   split: "train" | "eval";
   exampleType: "positive" | "weak_signal" | "irrelevant" | "duplicate" | "expired";
+};
+
+// Negotiation simulator
+
+export type NegotiationChannel = "simulated" | "email";
+
+export type NegotiationStatus =
+  | "opening"
+  | "awaiting_user"
+  | "counterparty_turn"
+  | "accepted"
+  | "denied"
+  | "failed";
+
+export type NegotiationParty = "agent" | "counterparty";
+
+export type NegotiationIntent = "accept" | "deny" | "negotiate";
+
+export type TradeoffParameterKey =
+  | "price_delta_pct"
+  | "warranty_years"
+  | "service_visits"
+  | "delivery_weeks";
+
+export type TradeoffParameter = {
+  key: TradeoffParameterKey;
+  label: string;
+  kind: "percent" | "count" | "enum";
+  options: Array<{ value: string; label: string }>;
+  defaultValue: string;
+};
+
+export type CounterpartyTradeoffOption = {
+  id: string;
+  roundIndex: number;
+  title: string;
+  summary: string;
+  parameters: TradeoffParameter[];
+};
+
+export type NegotiationMessage = {
+  id: string;
+  negotiationId: string;
+  roundIndex: number;
+  party: NegotiationParty;
+  channel: NegotiationChannel;
+  at: string;
+  price?: number;
+  currency?: string;
+  text: string;
+  parsedIntent?: NegotiationIntent;
+};
+
+export type Negotiation = {
+  id: string;
+  findingId: string;
+  opportunityId: string;
+  approvalId: string;
+  userId: string;
+  channel: NegotiationChannel;
+  status: NegotiationStatus;
+  seed: number;
+  openingPrice: number;
+  currency: string;
+  targetPrice: number;
+  counterpartyFloor: number;
+  rounds: number;
+  startedAt: string;
+  lastMessageAt: string;
+  endedAt?: string;
+  outcome?: "deal" | "no_deal";
+  agreedPrice?: number;
+};
+
+export type NegotiationDetail = {
+  negotiation: Negotiation;
+  messages: NegotiationMessage[];
+  pendingOptions: CounterpartyTradeoffOption[];
+  finding: Finding;
+  extraction?: Extraction;
+  opportunity?: Opportunity;
+  approval: ApprovalRequest;
+  gemini?: GeminiAnalysis;
+};
+
+export type NegotiationSummary = Pick<
+  Negotiation,
+  | "id"
+  | "findingId"
+  | "approvalId"
+  | "opportunityId"
+  | "status"
+  | "openingPrice"
+  | "currency"
+  | "targetPrice"
+  | "rounds"
+  | "startedAt"
+  | "lastMessageAt"
+  | "endedAt"
+  | "outcome"
+  | "agreedPrice"
+> & {
+  title: string;
+  buyer: string;
 };

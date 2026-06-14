@@ -72,6 +72,7 @@ struct FlowLayout: Layout {
 // MARK: - Error card
 
 struct ErrorCard: View {
+    var title: String = "Couldn't reach the radar API"
     let message: String
     let onRetry: () -> Void
 
@@ -80,7 +81,7 @@ struct ErrorCard: View {
             Image(systemName: "wifi.exclamationmark")
                 .font(.system(size: 36, weight: .light))
                 .foregroundStyle(AppTheme.danger)
-            Text("Couldn't reach the radar API")
+            Text(title)
                 .font(.headline)
                 .appInk()
             Text(message)

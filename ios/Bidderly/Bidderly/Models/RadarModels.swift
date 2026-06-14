@@ -25,13 +25,18 @@ struct CascadeInfo: Codable {
     let geminiGate: String
 }
 
+/// Mirrors `getIntegrationStatus()` in `src/lib/env.ts`. Field names must match
+/// the JSON the `/api/radar` endpoint emits or snapshot decoding fails entirely.
 struct IntegrationStatus: Codable {
     let mode: String
     let clerk: Bool
     let database: Bool
     let tavily: Bool
-    let pioneerGliner: Bool
-    let pioneerGemma: Bool
+    let pioneerGliner2: Bool
+    let pioneerClues: Bool?
+    let pioneerScoring: Bool
+    let pioneerDryRun: Bool?
+    let mockTenderBaseUrl: String?
     let gemini: Bool
     let missing: [String]?
 }

@@ -87,14 +87,49 @@ export async function inferExtractionAndClues(finding: {
   url?: string;
   detectedLanguage?: "de" | "en";
   id: string;
+  /**
+   * Override the entity-extraction model id. When omitted we use the
+   * PIONEER_GLINER2_MODEL env var. Two separate model ids only make
+   * sense if the operator has trained separate NER and clue
+   * classification jobs on Pioneer; for a single multi-head model
+   * the operator should set only PIONEER_GLINER2_MODEL and leave
+   * PIONEER_CLUES_MODEL unset (it defaults to the same value).
+   */
+  entityModelId?: string;
+  /** Override the classification model id. Defaults to entityModelId. */
+  cluesModelId?: string;
 }): Promise<ExtractionAndClues> {
   if (isPioneerDryRun()) {
     return dryRunExtractionAndClues(finding);
   }
 
-  const baseModel = process.env.PIONEER_GLINER2_MODEL ?? "fastino/gliner2-base-v1";
+  const entityModelId = finding.entityModelId ?? process.env.PIONEER_GLINER2_MODEL ?? "fastino/gliner2-base-v1";
+  const cluesModelId = finding.cluesModelId ?? entityModelId;
+  const useSeparateModels = entityModelId !== cluesModelId;
+
+  if (useSeparateModels) {
+    const [entityRes, clues] = await Promise.all([
+      runExtractionCall(finding, entityModelId),
+      runCluesCall(finding, cluesModelId),
+    ]);
+    return {
+      entities: entityRes.entities as ExtractedEntity[],
+      clueTags: clues,
+      confidence: entityRes.confidence,
+      rawSpans: entityRes.entities as PioneerNerPrediction[],
+    };
+  }
+
+  const res = await runMultiHeadCall(finding, entityModelId);
+  return parseExtractionResponse(res);
+}
+
+async function runMultiHeadCall(
+  finding: { rawText: string },
+  modelId: string,
+): Promise<PioneerInferenceResponse> {
   const body = {
-    model_id: baseModel,
+    model_id: modelId,
     text: finding.rawText,
     schema: {
       entities: [...ENTITY_LABELS],
@@ -108,17 +143,83 @@ export async function inferExtractionAndClues(finding: {
     },
     threshold: 0.4,
   };
-
   const res = await pioneerFetch<unknown>("/inference", {
     method: "POST",
     body,
   });
   const parsed = pioneerInferenceEnvelopeSchema.safeParse(res.data);
   if (!parsed.success) {
-    throw new PioneerError(422, "unprocessable_entity", "Pioneer /inference returned an unexpected body.");
+    throw new PioneerError(422, "unprocessable_entity", "Pioneer /inference (multi-head) returned an unexpected body.");
   }
+  return parsed.data as PioneerInferenceResponse;
+}
 
-  return parseExtractionResponse(parsed.data as PioneerInferenceResponse);
+async function runExtractionCall(
+  finding: { rawText: string },
+  modelId: string,
+): Promise<{ entities: PioneerNerPrediction[]; confidence: number }> {
+  const body = {
+    model_id: modelId,
+    text: finding.rawText,
+    schema: { entities: [...ENTITY_LABELS] },
+    threshold: 0.4,
+  };
+  const res = await pioneerFetch<unknown>("/inference", {
+    method: "POST",
+    body,
+  });
+  const parsed = pioneerInferenceEnvelopeSchema.safeParse(res.data);
+  if (!parsed.success) {
+    throw new PioneerError(422, "unprocessable_entity", "Pioneer /inference (NER) returned an unexpected body.");
+  }
+  const payload = parsed.data as PioneerInferenceResponse;
+  const result = (payload.result ?? {}) as { entities?: PioneerNerPrediction[] };
+  return {
+    entities: result.entities ?? [],
+    confidence: payload.confidence ?? 0.85,
+  };
+}
+
+async function runCluesCall(
+  finding: { rawText: string },
+  modelId: string,
+): Promise<ProcurementClue[]> {
+  const body = {
+    model_id: modelId,
+    text: finding.rawText,
+    schema: {
+      classifications: [
+        {
+          task: "procurement_clues",
+          labels: [...CLUE_LABELS],
+          multi_label: true,
+        },
+      ],
+    },
+    threshold: 0.4,
+  };
+  const res = await pioneerFetch<unknown>("/inference", {
+    method: "POST",
+    body,
+  });
+  const parsed = pioneerInferenceEnvelopeSchema.safeParse(res.data);
+  if (!parsed.success) {
+    throw new PioneerError(422, "unprocessable_entity", "Pioneer /inference (clues) returned an unexpected body.");
+  }
+  const payload = parsed.data as PioneerInferenceResponse;
+  const result = (payload.result ?? {}) as {
+    classifications?: PioneerClassificationPrediction[];
+  };
+  const pred = (result.classifications ?? []).find(
+    (c) => c.task === "procurement_clues",
+  );
+  if (!pred) return [];
+  const out: ProcurementClue[] = [];
+  for (const label of pred.labels) {
+    const ok = clueLabelSchema.safeParse(label);
+    if (ok.success) out.push(ok.data);
+  }
+  return out;
 }
 
 // --- Decoder (Gemma 4 scoring) --------------------------------------------

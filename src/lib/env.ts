@@ -4,8 +4,10 @@ export type IntegrationStatus = {
   database: boolean;
   tavily: boolean;
   pioneerGliner2: boolean;
+  pioneerClues: boolean;
   pioneerScoring: boolean;
   pioneerDryRun: boolean;
+  mockTenderBaseUrl: string | null;
   gemini: boolean;
   missing: string[];
 };
@@ -57,8 +59,10 @@ export function getIntegrationStatus(): IntegrationStatus {
     database: isDatabaseConfigured(),
     tavily: Boolean(process.env.TAVILY_API_KEY),
     pioneerGliner2,
+    pioneerClues: Boolean(process.env.PIONEER_CLUES_MODEL),
     pioneerScoring,
     pioneerDryRun,
+    mockTenderBaseUrl: process.env.MOCK_TENDER_BASE_URL ?? null,
     gemini: Boolean(process.env.GEMINI_API_KEY),
     missing: missing.slice(),
   };
