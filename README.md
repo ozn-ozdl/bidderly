@@ -1,398 +1,381 @@
 # Bidderly.win
 
-Bidderly.win is a proactive tender and procurement opportunity radar for sales teams. Scout agents scrape German/EU procurement sources, announcement pages, and curated demo feeds, then push each finding through a cost-aware model cascade that is **fine-tuned on the same data it scores at inference time**:
+Bidderly.win is a proactive tender and procurement opportunity radar for DACH sales teams. Scout agents watch German and EU procurement sources, run each finding through a cost-aware model cascade, and only interrupt humans when a decision actually moves the deal forward.
 
 ```text
-scraper -> fine-tuned Pioneer GLiNER2 -> Pioneer/Gemma 4 -> Gemini
+scraper → fine-tuned Pioneer GLiNER2 → Pioneer/Gemma scoring → Gemini (gated)
 ```
 
-The local app runs with deterministic demo fixtures so the full hackathon story works without provider keys. Production adapters plug into the same typed data model and route handlers.
+The app ships with deterministic demo fixtures so the full product story works without provider keys. Production adapters plug into the same typed data model and API routes.
 
-## What Is Implemented
+## Architecture
 
-- Next.js App Router dashboard for the live radar feed.
-- **Scraper** ([src/lib/scraper/](src/lib/scraper/)) — host-allow-listed HTTP fetcher with rate limit, timeout, and byte cap. Cleans HTML to plain text.
-- **Mock tender portal** at `public/mock-tenders/*.html` (Munich IT, Berlin solar, Hamburg supplier day, EU digital services, Cologne duplicate, network breakfast, Stuttgart energy, Bremen expired). Each page embeds a `<meta name="tender-id">` so the parser can recover the original `Finding.id` after scraping. The body text matches the in-app fixtures exactly so GLiNER2 entity spans land on the same character offsets at train and serve time.
-- **Pioneer / Fastino integration** ([src/lib/pioneer/](src/lib/pioneer/)) — direct calls to `api.pioneer.ai` for synthetic data generation, training jobs, evaluations, and inference. Dry-run by default (`PIONEER_DRY_RUN=true`) so the demo never needs a live key. Single `PIONEER_API_KEY` env var.
-- **Alignment contract** ([src/lib/pioneer/schemas.ts](src/lib/pioneer/schemas.ts)) — single source of truth for entity labels, clue labels, and the scoring prompt. Imported by the scraper, the fixtures, the synthetic-data builders, and the inference call. Changing a label name here propagates to every layer.
-- Synthetic GLiNER training examples with entity spans and procurement clue labels.
-- Route handlers:
-  - `GET /api/radar` returns the full snapshot, cascade metadata, training examples, and integration status.
-  - `POST /api/scout-run` runs the full pipeline: scraper + Tavily enrichment + Pioneer cascade.
-  - `POST /api/scout-scrape` runs only the scraper, returns the parsed pages.
-  - `GET /api/events` streams demo agent events over Server-Sent Events.
-  - `GET|POST /api/cron/scout` runs the scout pipeline with optional bearer protection.
-  - `GET /api/integrations` reports configured provider status.
-  - `POST /api/pioneer/synthesize` starts NER + classification + decoder generation jobs.
-  - `GET|POST /api/pioneer/synthesize/status` polls generation jobs and lists datasets.
-  - `POST /api/pioneer/train` submits NER + clues + scoring training jobs.
-  - `GET|POST /api/pioneer/train/status` polls training jobs and reports metrics.
-  - `GET|POST /api/pioneer/evaluations` runs and reads evaluation results.
-  - `GET /api/pioneer/route` reports the active Pioneer routing state.
-- Interactive approval flow: low-score findings do not alert; `human_review` and blocker findings show a foreground approval alert.
-- **Pioneer training panel** in the radar sidebar — datasets, training jobs, F1 / precision / recall per checkpoint, eval deltas. The `Pioneer` view is the operational surface for the Fastino side challenge.
+```mermaid
+flowchart LR
+  subgraph sources [Sources]
+    MS[mock-sites service]
+    TV[Tavily search/extract]
+  end
 
-## Model Cascade
+  subgraph web [Next.js app]
+    SC[Scraper]
+    LP[live-pipeline]
+    API[API routes]
+    UI[Radar dashboard]
+  end
 
-### 1. Fine-Tuned GLiNER2 Extraction
+  subgraph providers [Providers]
+    PG[Pioneer GLiNER2 + clues]
+    PM[Pioneer Gemma / Qwen scoring]
+    GM[Gemini reasoning]
+  end
 
-Input:
+  subgraph realtime [Realtime backend]
+    SIO[Socket.IO + native WS]
+    PG2[(Postgres user state)]
+  end
 
-- Raw announcement text
-- Source type
-- Source URL
-- Detected language
+  subgraph mobile [iOS app]
+    IOS[Bidderly SwiftUI]
+  end
 
-Output:
+  MS --> SC
+  TV --> LP
+  SC --> LP
+  LP --> PG --> PM --> GM
+  LP --> API --> UI
+  API --> PG2
+  UI <-->|Clerk JWT| SIO
+  IOS <-->|Clerk JWT| SIO
+  IOS --> API
+```
 
-- Buyer/issuer
-- Project name
-- Category
-- Location
-- Deadline
-- Budget/value
-- Contact/persona
-- Procurement clue tags: `budget_approved`, `supplier_call`, `pre_announcement`, `official_tender`, `deadline_near`, `login_required`, `event_notice`, `duplicate`, `expired`
+### How a scout run works
 
-Synthetic examples live in [src/lib/demo-data.ts](src/lib/demo-data.ts) as `syntheticTrainingExamples`. Each example includes text, language, source type, expected entity spans, clue labels, split, and example type.
+1. **Discovery** — The scraper hits four mock tender portals (TED EU, Bund.de, Munich, Berlin) hosted by the separate `mock-sites` service, follows internal detail links, and parses HTML into raw text. Tavily search/extract augments this when `TAVILY_API_KEY` is set and the mock host is publicly reachable (Tavily skips localhost).
+2. **Extraction** — Fine-tuned Pioneer GLiNER2 models extract entities (buyer, project, deadline, budget, etc.) and procurement clue tags.
+3. **Scoring / routing** — A Pioneer decoder model (Gemma 4 / Qwen SFT) returns `worthOutreachScore`, urgency, route (`ignore` | `monitor` | `qualify` | `human_review`), and rationale. Low-score findings are suppressed.
+4. **Reasoning gate** — Gemini runs only when the cascade gate opens (high score, `human_review`, high urgency, or a blocker). See `src/lib/cascade.ts`.
+5. **Human escalation** — Pending approvals sync across web and iOS via the realtime backend. Approved items can spawn AI-assisted **negotiations** (trade-off parameters, counterparty replies via Gemini).
 
-### 2. Pioneer/Gemma 4 Scoring And Routing
+With `DEMO_USE_FIXTURES=true` (default), scout runs return curated fixture data and never call external providers.
 
-Gemma 4 returns:
+## Repository structure
 
-- `worthOutreachScore` from `0-100`
-- `urgency`: `low`, `medium`, `high`
-- `route`: `ignore`, `monitor`, `qualify`, `human_review`
-- Short rationale
+| Path | Purpose |
+| --- | --- |
+| `src/app/` | Next.js App Router — landing page, `/radar`, `/negotiations`, `/settings`, auth pages |
+| `src/app/api/` | REST handlers for radar, scout, Pioneer training, negotiations, cron |
+| `src/components/` | UI — radar shell, landing sections, insights, negotiations |
+| `src/lib/` | Core logic — cascade, demo fixtures, live pipeline, provider clients, Pioneer SDK, scraper, DB |
+| `backend/` | Separate Fastify + Socket.IO service for per-user state (approvals, watchlist, dismissals) |
+| `mock-sites/` | Standalone Fastify static server — four themed mock tender portals on port 3002 |
+| `ios/Bidderly/` | Production SwiftUI companion app (ClerkKit auth, radar, approvals, negotiations, realtime) |
+| `ios/BidderlyRadarDemo/` | Earlier minimal scaffold (superseded by `ios/Bidderly/`) |
+| `public/mock-tenders/` | Legacy static HTML fixtures aligned with training data (used by demo fixtures, not the live scraper path) |
+| `scripts/` | Pioneer training pipelines and Tavily/scraper verification |
+| `docs/` | Postgres schema (`postgres-schema.sql`), legacy iOS notes |
 
-### 3. Gemini Deep Reasoning Gate
+## Features
 
-Gemini is called only when:
+### Web dashboard (`/radar`)
 
-- `worthOutreachScore >= 70`
-- or route is `human_review`
-- or urgency is `high`
-- or a blocker needs human judgment
+- **Radar** — Live feed of findings, extractions, scores, and opportunities
+- **Approvals** — Pending human-review items with foreground toast alerts
+- **Negotiations** — Start from an approved finding; Gemini generates counter-offer strategies and simulates buyer replies
+- **Settings** — Integration status and configuration overview
+- **Pipeline** — Scout run timeline and agent event log
+- **Insights** — Geographic map, deadline timeline, value distribution
+- **Pioneer** — Operational panel for synthetic data generation, training jobs, evaluations, and model routing
 
-The gate is implemented in [src/lib/cascade.ts](src/lib/cascade.ts), and `getRadarSnapshot()` validates that fixture Gemini analyses obey it.
+### Realtime sync
 
-## Agent Roles
+When `NEXT_PUBLIC_REALTIME_URL` is set, signed-in users connect to the `backend/` service over Socket.IO (web) or native WebSocket (iOS). User-specific approval decisions, watchlist entries, dismissals, and read state persist in Postgres and broadcast to all connected devices for that user.
 
-- Research scout: finds raw public announcements through watchlisted pages, safe curated feeds, and Tavily enrichment.
-- Extraction agent: runs fine-tuned GLiNER2 and writes structured entities plus clue tags.
-- Scoring/routing agent: runs Gemma 4 and suppresses weak or irrelevant findings.
-- Reasoning agent: uses Gemini only for high-value findings or blocker cases.
-- Human escalation agent: creates approval requests only when user input is required.
+### iOS companion (`ios/Bidderly/`)
 
-## Local Development
+Native SwiftUI app with ClerkKit authentication, radar summary, approval inbox, finding detail, negotiations, and foreground alerts via `AlarmManager`. Configure `API_BASE_URL` and `REALTIME_BASE_URL` in Xcode build settings / Info.plist (see `AppConfig.swift`).
+
+### Mock tender portals (`mock-sites/`)
+
+Four visually distinct portals — TED EU, Bund.de, stadt.muenchen.de, berlin.de — each with portal home pages and tender detail pages. Pages embed `<meta name="tender-id">` so the parser can recover stable finding IDs. Deployed separately on Railway in production; runs locally on port 3002 for development.
+
+## Tech stack
+
+| Layer | Technology |
+| --- | --- |
+| Web | Next.js 16 (App Router), React 19, Tailwind CSS 4, TypeScript |
+| Auth | Clerk (`@clerk/nextjs` web, ClerkKit iOS) |
+| Database | PostgreSQL via `pg` (radar snapshots + user state) |
+| Realtime | Fastify 5, Socket.IO 4, native WebSocket |
+| AI providers | Pioneer/Fastino (`api.pioneer.ai`), Google Gemini, Tavily |
+| iOS | SwiftUI, ClerkKit, native WebSocket client |
+| Deploy | Railway (Next.js, backend, mock-sites) |
+
+## Local development
+
+### Prerequisites
+
+- Node.js 22.x
+- PostgreSQL (optional — app falls back to in-memory fixtures without `DATABASE_URL`)
+- Xcode 16+ (for iOS only)
+
+### 1. Web app
 
 ```bash
+npm install
+cp .env.example .env.local
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000). The landing page is at `/`; the dashboard is at `/radar`.
+
+### 2. Mock tender portals (recommended for live scout runs)
+
+In a second terminal:
+
+```bash
+cd mock-sites
 npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Serves portals at [http://localhost:3002](http://localhost:3002). Ensure `MOCK_TENDER_BASE_URL=http://localhost:3002` in `.env.local`.
 
-Useful checks:
+### 3. Realtime backend (optional, for multi-device approval sync)
+
+In a third terminal:
+
+```bash
+cd backend
+npm install
+cp ../.env.example .env   # or symlink; needs DATABASE_URL + Clerk keys
+npm run dev
+```
+
+Listens on port 4001 by default. Set `NEXT_PUBLIC_REALTIME_URL=http://localhost:4001` in the web app's `.env.local`.
+
+### 4. iOS app
+
+1. Open `ios/Bidderly/Bidderly.xcodeproj` in Xcode.
+2. Set build settings / Info.plist keys: `CLERK_PUBLISHABLE_KEY`, `API_BASE_URL` (e.g. `http://localhost:3000` or your machine IP), `REALTIME_BASE_URL` (e.g. `ws://localhost:4001`).
+3. Build and run on simulator or device.
+
+### 5. Verification scripts
+
+```bash
+# Tavily scout config + scraper smoke test
+npx tsx scripts/verify-tavily-scout.ts
+
+# Pioneer training pipelines (require PIONEER_API_KEY, PIONEER_DRY_RUN=false)
+npx tsx scripts/pioneer-train-only.ts
+npx tsx scripts/pioneer-big-train.ts
+npx tsx scripts/pioneer-xl-train.ts
+```
+
+### Useful checks
 
 ```bash
 npm run lint
 npm run build
 ```
 
-The build may need a normal local environment because Turbopack can bind an internal local port during CSS processing.
+## Environment configuration
 
-## Environment Variables
+Copy `.env.example` to `.env.local` for the web app. The backend and mock-sites services read the same variables where noted.
 
-Copy `.env.example` to `.env.local` and fill in real values when connecting providers:
+### Core
 
-```bash
-cp .env.example .env.local
-```
+| Variable | Description |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `DB_AUTO_INIT` | When `true`, auto-creates `radar_snapshots` and user-state tables |
+| `NEXT_PUBLIC_APP_URL` | Public web URL (e.g. `http://localhost:3000`) |
+| `DEMO_USE_FIXTURES` | Default `true` — deterministic fixtures, no external API calls |
 
-Core variables:
+### Clerk auth
 
-- `DATABASE_URL`: Railway Postgres connection string.
-- `DB_AUTO_INIT`: when `true`, creates the `radar_snapshots` cache table automatically.
-- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`: Clerk web auth.
-- `PIONEER_API_KEY`: Fastino/Pioneer API key. Replaces the old `PIONEER_GLINER_*` and `PIONEER_GEMMA4_*` env-var pairs; the cascade now calls `api.pioneer.ai` directly.
-- `PIONEER_BASE_URL`: defaults to `https://api.pioneer.ai`.
-- `PIONEER_DRY_RUN`: defaults to `true`; flips to `false` once a live key is set. The dry-run path exercises every code path and persists realistic-looking state to an in-memory store.
-- `PIONEER_GLINER2_MODEL`: defaults to `fastino/gliner2-base-v1`. Use `fastino/gliner2-multi-v1` for multilingual DE + EN.
-- `PIONEER_GEMMA4_MODEL`: defaults to `google/gemma-4-9b-it` (SFT-only on Pioneer per the LLM matrix).
-- `PIONEER_NER_DATASET`, `PIONEER_CLUE_DATASET`, `PIONEER_SCORING_DATASET`: dataset names on Pioneer.
-- `PIONEER_NER_JOB_NAME`, `PIONEER_CLUE_JOB_NAME`, `PIONEER_SCORING_JOB_NAME`: training job labels.
-- `GEMINI_API_KEY`: final reasoning.
-- `GEMINI_MODEL`: defaults to `gemini-2.5-pro`.
-- `TAVILY_API_KEY`: search and source enrichment.
-- `TAVILY_PROJECT_ID`: optional Tavily project tracking header.
-- `DEMO_USE_FIXTURES`: keep `true` for hackathon-safe deterministic mode; set `false` only when all live provider keys are configured.
-- `SCOUT_CRON_SECRET`: protects scheduled scout triggers.
-- `SCRAPER_ENABLED`: defaults to `true`.
-- `SCRAPER_ALLOW_ALL`: defaults to `false`; if `true`, the scraper will attempt any host (dev only).
-- `SCRAPER_QPS`: per-host request rate, defaults to 2.
-- `MOCK_TENDER_BASE_URL`: defaults to `http://localhost:3000/mock-tenders`.
+| Variable | Description |
+| --- | --- |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key |
+| `CLERK_SECRET_KEY` | Clerk secret key |
+| `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | Default `/sign-in` |
+| `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | Default `/sign-up` |
+| `CLERK_AUTHORIZED_PARTIES` | Allowed origins for backend JWT verification |
+| `CLERK_WEBHOOK_SECRET` | Clerk webhook signing secret (backend) |
+
+If Clerk keys are missing, the web proxy stays open so demo hosting works without auth.
+
+### Realtime backend
+
+| Variable | Description |
+| --- | --- |
+| `NEXT_PUBLIC_REALTIME_URL` | Web client Socket.IO URL (e.g. `http://localhost:4001`) |
+| `REALTIME_BASE_URL` | iOS WebSocket URL (e.g. `ws://localhost:4001`) |
+| `WEB_ORIGIN` | CORS origin for backend (e.g. `http://localhost:3000`) |
+| `PORT` | Backend listen port (default `4001`) |
+
+### Mock tender portals
+
+| Variable | Description |
+| --- | --- |
+| `MOCK_TENDER_BASE_URL` | Mock-sites service URL (default `http://localhost:3002`) |
+| `TAVILY_SCOUT_QUERY` | Optional override for Tavily search query |
+
+### Pioneer / Fastino
+
+| Variable | Description |
+| --- | --- |
+| `PIONEER_API_KEY` | Pioneer API key |
+| `PIONEER_BASE_URL` | Default `https://api.pioneer.ai` |
+| `PIONEER_DRY_RUN` | Default `true` — exercises code paths without live API calls |
+| `PIONEER_GLINER2_MODEL` | Fine-tuned NER model id |
+| `PIONEER_CLUES_MODEL` | Fine-tuned classification model id (defaults to NER model) |
+| `PIONEER_GEMMA4_MODEL` | Fine-tuned scoring decoder model id |
+| `PIONEER_*_DATASET` / `PIONEER_*_JOB_NAME` | Dataset and training job names |
+
+The alignment contract in `src/lib/pioneer/schemas.ts` defines entity labels, clue labels, and the scoring prompt — shared by fixtures, synthetic builders, scraper output, and inference.
+
+### Other providers
+
+| Variable | Description |
+| --- | --- |
+| `TAVILY_API_KEY` | Tavily search and extract |
+| `TAVILY_PROJECT_ID` | Optional Tavily project header |
+| `GEMINI_API_KEY` | Gemini deep reasoning |
+| `GEMINI_MODEL` | Default `gemini-2.5-pro` |
+| `NEGOTIATION_MODEL` | Default `gemini-3.1-flash-lite` for negotiation replies |
+
+### Scraper
+
+| Variable | Description |
+| --- | --- |
+| `SCRAPER_ENABLED` | Default `true` |
+| `SCRAPER_ALLOW_ALL` | Default `false`; set `true` in dev only to crawl any host |
+| `SCRAPER_QPS` | Per-host rate limit (default `2`) |
+
+### Demo / ops
+
+| Variable | Description |
+| --- | --- |
+| `SCOUT_CRON_SECRET` | Bearer token for `GET\|POST /api/cron/scout` |
+
+## API routes
+
+| Route | Method | Description |
+| --- | --- | --- |
+| `/api/radar` | GET | Full radar snapshot |
+| `/api/scout-run` | POST | Run full scout pipeline (Clerk-protected when configured) |
+| `/api/scout-scrape` | POST | Scraper only — returns parsed pages |
+| `/api/cron/scout` | GET, POST | Scheduled scout trigger (optional bearer auth) |
+| `/api/events` | GET | Server-Sent Events stream of agent events |
+| `/api/integrations` | GET | Provider configuration status |
+| `/api/approvals/reset` | POST | Clear user approval state (Clerk-protected) |
+| `/api/negotiations` | GET | List negotiations for current user |
+| `/api/negotiations/start` | POST | Start negotiation from an approval |
+| `/api/negotiations/[id]` | GET | Negotiation detail |
+| `/api/negotiations/[id]/respond` | POST | Submit counter-offer or response |
+| `/api/negotiations/reset` | POST | Reset negotiation store |
+| `/api/pioneer/synthesize` | POST | Start synthetic data generation jobs |
+| `/api/pioneer/synthesize/status` | GET, POST | Poll generation jobs |
+| `/api/pioneer/train` | POST | Submit training jobs |
+| `/api/pioneer/train/status` | GET, POST | Poll training jobs |
+| `/api/pioneer/evaluations` | GET, POST | Run and read evaluations |
+| `/api/pioneer/route` | GET | Active Pioneer model routing state |
+
+Backend service (separate deploy):
+
+| Route | Description |
+| --- | --- |
+| `GET /health` | Health check |
+| `GET /state` | Load user state (Bearer JWT) |
+| `POST /webhooks/clerk` | Clerk user lifecycle webhooks |
+| Socket.IO `/socket.io` | Real-time state sync |
+| Native WebSocket | iOS client path |
+
+## Model cascade
+
+### 1. Pioneer GLiNER2 extraction
+
+Input: raw announcement text, source type, URL, detected language.
+
+Output: structured entities (buyer, project, category, location, deadline, budget, contact) and clue tags (`budget_approved`, `supplier_call`, `official_tender`, `deadline_near`, etc.).
+
+### 2. Pioneer scoring / routing
+
+Output: `worthOutreachScore` (0–100), urgency (`low` | `medium` | `high`), route, rationale.
+
+### 3. Gemini reasoning gate
+
+Gemini is called only when `shouldCallGemini()` in `src/lib/cascade.ts` returns true:
+
+- `worthOutreachScore >= 70`, or
+- route is `human_review`, or
+- urgency is `high`, or
+- a blocker requires human judgment
+
+## Agent roles
+
+| Agent | Responsibility |
+| --- | --- |
+| Research scout | Discovers raw announcements via scraper and Tavily |
+| Extraction agent | Runs fine-tuned GLiNER2; writes entities and clue tags |
+| Scoring / routing agent | Runs decoder model; suppresses weak findings |
+| Reasoning agent | Gemini for high-value or blocker cases only |
+| Human escalation | Creates approval requests for `human_review` and blockers |
 
 ## Postgres
 
-The production schema is in [docs/postgres-schema.sql](docs/postgres-schema.sql). The app now persists the latest full radar snapshot in Postgres when `DATABASE_URL` is set, and it also includes relational tables for the long-term source/run/finding/extraction/score/opportunity/approval/event model.
+When `DATABASE_URL` is set:
 
-Recommended Railway setup:
+- **`radar_snapshots`** — Latest full radar snapshot as JSONB (auto-created with `DB_AUTO_INIT=true`)
+- **User state tables** — `user_approvals`, `user_dismissals` (web app); backend adds `user_watchlist`, `user_read_state`, `users`
 
-1. Create a Railway project.
-2. Add a Postgres service.
-3. Add this Next.js app service from GitHub.
-4. Set `DATABASE_URL` from Railway Postgres.
-5. Add Clerk, Pioneer, Gemini, and Tavily variables.
-6. Run the SQL in `docs/postgres-schema.sql` against the Railway database.
-7. Deploy with the included [railway.json](railway.json).
-8. Set `DEMO_USE_FIXTURES=false` only after Tavily, Pioneer GLiNER, Pioneer Gemma 4, and Gemini keys are present.
+The long-term relational schema (sources, findings, extractions, scores, opportunities) is defined in `docs/postgres-schema.sql` for future migration.
 
-## Cloudflare DNS
+## Deployment (Railway)
 
-For `bidderly.win`:
+Three services are typically deployed:
 
-1. Add the domain to Cloudflare.
-2. Add a `CNAME` record for `www` pointing to the Railway public domain.
-3. Add an apex `CNAME` or Cloudflare CNAME flattening record pointing to Railway.
-4. Enable proxied DNS after Railway has issued TLS.
-5. Set `NEXT_PUBLIC_APP_URL=https://bidderly.win`.
+1. **Next.js app** — `railway.json` at repo root; health check `/api/radar`
+2. **Realtime backend** — `backend/` with `PORT`, `DATABASE_URL`, Clerk vars
+3. **Mock tender portals** — `mock-sites/` with its own `railway.json` and Dockerfile
 
-## Clerk
+Set `MOCK_TENDER_BASE_URL` to the public mock-sites URL. Set `DEMO_USE_FIXTURES=false` only when Tavily, Pioneer, and Gemini keys are configured.
 
-The app has Clerk-ready routes at `/sign-in` and `/sign-up`, plus `src/proxy.ts` route protection. If Clerk keys are missing, the proxy stays open so demo hosting still works.
+For `bidderly.win` DNS, point Cloudflare CNAME records at the Railway public domain and set `NEXT_PUBLIC_APP_URL=https://bidderly.win`.
 
-Production wiring:
+## Demo script
 
-1. Create a Clerk application.
-2. Add `bidderly.win` and the Railway preview URL as allowed origins.
-3. Set the Clerk environment variables.
-4. The App Router layout will wrap content in `ClerkProvider` automatically when keys are present.
-5. The proxy protects `/`, `/api/radar`, `/api/events`, and `/api/scout-run` when Clerk is configured.
-6. Keep server-side auth checks for write routes as the app grows; do not rely on proxy alone for sensitive mutations.
+1. Open `http://localhost:3000/radar`.
+2. Confirm watched German/EU sources appear in the sidebar.
+3. Click **Run scout**.
+4. Open a high-value finding (e.g. Munich or EU).
+5. Show GLiNER2 extracted entities and clue tags.
+6. Show scoring model route, score, urgency, and rationale.
+7. Show low-score duplicates routed to `ignore` without alerts.
+8. Show Gemini analysis only on gated findings.
+9. Approve or request info on a pending approval.
+10. Optionally start a **negotiation** from an approved item.
 
-iOS notes are in [docs/ios-companion.md](docs/ios-companion.md). The SwiftUI scaffold keeps sign-in mocked so it can be read without a configured Xcode project; replace that state with Clerk iOS session state in production.
+## Known scope boundaries
 
-## Partner Technology Adapters
+- Fixtures are the default; live scraping is limited to the mock-sites allow list plus Tavily enrichment.
+- Locked-screen push notifications are out of scope; foreground alerts are the demo target.
+- Negotiation state is in-memory on the Next.js server (resets on deploy).
+- `ios/BidderlyRadarDemo/` is a legacy scaffold; use `ios/Bidderly/` for the current app.
+- `docs/ios-companion.md` describes the older demo scaffold and may be stale.
 
-The fixture flow maps directly to production calls:
+## Key source files
 
-1. Tavily search/enrichment finds source URLs and snippets.
-2. Pioneer GLiNER2 receives `{ rawText, sourceType, sourceUrl, detectedLanguage }`.
-3. Pioneer/Gemma 4 receives the extraction and returns score, urgency, route, and rationale.
-4. Gemini receives only gated findings and returns summary, risks, next steps, and blockers.
-5. Approval requests are emitted to `/api/events` for web and active iOS clients.
-
-The live adapter code is in [src/lib/provider-clients.ts](src/lib/provider-clients.ts), and the orchestration code is in [src/lib/live-pipeline.ts](src/lib/live-pipeline.ts). With `DEMO_USE_FIXTURES=true`, the app never calls external providers. With `DEMO_USE_FIXTURES=false`, the scout route requires all live provider variables.
-
-## Pioneer / Fastino Side Challenge
-
-The cascade is fine-tuned on the same data it scores at inference time, satisfying the **Fastino — Best use of Pioneer** side challenge (500€ prize). The integration is built around the alignment contract in [src/lib/pioneer/schemas.ts](src/lib/pioneer/schemas.ts) — the label vocabulary, the scoring prompt, and the row shapes are defined once and consumed by every layer.
-
-### Modules
-
-- [src/lib/pioneer/client.ts](src/lib/pioneer/client.ts) — base `pioneerFetch` with `X-API-Key` auth, dry-run short-circuit, and the documented 401/402/404/422/429/500 error mapping.
-- [src/lib/pioneer/datasets.ts](src/lib/pioneer/datasets.ts) — `POST /generate` + `GET /generate/jobs/:id` + dataset inspection.
-- [src/lib/pioneer/training.ts](src/lib/pioneer/training.ts) — `POST /felix/training-jobs` + polling + logs + checkpoints + stop + download.
-- [src/lib/pioneer/evaluations.ts](src/lib/pioneer/evaluations.ts) — `POST /felix/evaluations` + read + dry-run synthetic breakdown.
-- [src/lib/pioneer/inference.ts](src/lib/pioneer/inference.ts) — `POST /inference` for GLiNER2 (NER + classification, multi-head) and Gemma 4 (decoder SFT).
-- [src/lib/pioneer/synthetic-builders.ts](src/lib/pioneer/synthetic-builders.ts) — maps `SyntheticTrainingExample` to Pioneer NER / classification / decoder row shapes.
-- [src/lib/scraper/](src/lib/scraper/) — host-allow-listed HTML fetcher + text extractor.
-
-### End-to-End flow
-
-1. **Scrape** — `POST /api/scout-scrape` hits the eight mock tender pages at `public/mock-tenders/`, parses them, and returns clean raw text. In production the same scraper hits the allow-listed public portals.
-2. **Align** — the scraper output is matched against the in-app fixtures by `Finding.id`, so the body text is byte-identical to the training rows.
-3. **Generate** — `POST /api/pioneer/synthesize` calls `POST /generate` three times (NER, classification, decoder). The same builders also feed the dry-run store so the rest of the pipeline trains against realistic data without a live key.
-4. **Train** — `POST /api/pioneer/train` calls `POST /felix/training-jobs` three times. GLiNER2 NER and clue classification share the same base model and can ship as one multi-head model on Pioneer.
-5. **Evaluate** — `POST /api/pioneer/evaluations` calls `POST /felix/evaluations` for each completed training job, returning F1, precision, recall, and a per-entity breakdown.
-6. **Route** — `GET /api/pioneer/route` reports the active model ids. The cascade's next scout run calls `POST /inference` with the fine-tuned `model_id`, replacing the base model.
-
-### Running the pipeline against a live Pioneer key
-
-1. `cp .env.example .env.local`, fill in `PIONEER_API_KEY`.
-2. Set `PIONEER_DRY_RUN=false`.
-3. `npm run dev`.
-4. Open `http://localhost:3000/radar`, click the **Pioneer** sidebar entry.
-5. Click **Synthesize rows** — three jobs go `queued → ready`. The UI shows the row counts that landed in each dataset.
-6. Click **Train all** — three jobs go `requested → running → complete`. The UI shows F1, precision, and recall.
-7. (Optional) Click **Run evaluation** on a completed training job to get the per-entity breakdown.
-
-The dry-run path runs end-to-end with no key, so the demo never blocks on a missing Pioneer plan or rate limit.
-
-### Live E2E run (verified against the real Fastino API on 14 Jun 2026)
-
-Run with `PIONEER_DRY_RUN=false npx tsx scripts/pioneer-train-only.ts`. The script:
-
-1. Reads the 12 aligned training examples from `src/lib/demo-data.ts` (6 hand-written NER spans + 6 derived from the live extractions of the same fixture text the cascade uses at inference time — the alignment contract in `src/lib/pioneer/schemas.ts` is what guarantees character-offset stability).
-2. Generates an additional 12 synthetic examples via `POST /generate` against the live Fastino API for the 7 procurement entity labels.
-3. Submits a LoRA training job against `fastino/gliner2-base-v1` (the smallest GLiNER2 model, 8K context, 0.15 USD / M tokens).
-4. Polls `GET /felix/training-jobs/:id` every 10s until `status: deployed` (~45s wall time on `modal-l4`).
-5. Runs an evaluation via `POST /felix/evaluations` and polls until `status: complete`.
-
-Concrete run output (Pioneer job ids, valid for the demo account):
-
-```text
-TRAIN_JOB    { id: "aeee9da3-f217-4794-afee-e9f2f901fb4f", status: "requested" }
-TRAIN_POLL   { id: "aeee9da3-f217-4794-afee-e9f2f901fb4f", status: "running" }
-TRAIN_DONE   { status: "complete", metrics: {} }
-CHECKPOINTS  [ 4 checkpoints, steps 1, 2, 3, 3 ]
-EVAL_JOB     { id: "5e173c7a-7f3f-4637-ad84-4282cde2a5d6", status: "pending" }
-EVAL_DONE    { status: "complete", f1: 0.090, precision: 0.070, recall: 0.125, accuracy: 0.563 }
-```
-
-The low F1 is the expected result of fine-tuning GLiNER2 on 12 examples — the model produced empty predictions on the 3-example validation split. The point of the demo is the pipeline, not the metrics: the same code path runs against the real API end-to-end, with checkpoints saved, deployment succeeded, and per-example predictions returned in the evaluation response. Scale `num_examples` to 200+ in `POST /generate` and the same script produces a production-quality extractor.
-
-The trained model is reachable via `model_id = aeee9da3-f217-4794-afee-e9f2f901fb4f` on `POST /inference` once the cascade is repointed at it (see `/api/pioneer/route`).
-
-### Big E2E run (verified against the real Fastino API on 14 Jun 2026)
-
-Run with `npx tsx scripts/pioneer-big-train.ts`. Generates 3 datasets in parallel, trains 3 models in parallel, runs 3 evaluations in parallel. Total wall time ~3 minutes.
-
-| Task | Base model | Dataset | Examples | Epochs | LoRA | Job id | Status |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| NER | `fastino/gliner2-multi-v1` | `bidderly-tender-ner-big` v1 | 15 | 5 | yes | `549910b2-a5b1-4815-9c31-a58520f4a2da` | deployed |
-| Classification | `fastino/gliner2-multi-v1` | `bidderly-tender-clues-big` v1 | 100 | 5 | yes | `b1655af3-061c-4b60-9fbf-42a2a8869427` | deployed |
-| Decoder (SFT) | `Qwen/Qwen3-1.7B-Base` | `bidderly-tender-scoring-big` v1 | 60 | 3 | yes | `9269e534-2a50-4dc2-9d58-9d12827febe6` | deployed |
-
-Pioneer's `/generate` endpoint has a per-call cap on NER (~15 examples per request). For larger NER datasets, run multiple `/generate` calls and let Pioneer version the dataset. The classification and decoder endpoints handle 100+ examples in one call.
-
-Evaluation results:
-
-| Eval | Job id | Result |
-| --- | --- | --- |
-| NER v1 | `6c573f48-e67c-4c51-abab-c3c0f3bf3561` | F1 0.079, P 0.058, R 0.125, accuracy 0.463, sample_count 3 |
-| Classification v1 | `ea7dfdbd-0797-4ea0-95b1-18c35193a109` | complete, sample_count 20 — eval framework marks predictions `invalid_prediction: true` despite correct raw output (Pioneer classification eval quirk) |
-| Scoring v1 | `93e0a2e3-37ef-4360-abc8-8a2650dacd59` | complete, ROUGE-L ≈ 0.20 — Qwen3-1.7B produces prose answers rather than strict JSON |
-
-Live inference smoke test (against the Munich school network text):
-
-```text
-NER model 549910b2-...:
-  budget_value   "2,4 Mio. EUR"                                    conf 0.998
-  buyer_issuer   "Bildungsausschuss der Landeshauptstadt München"  conf 0.567
-  buyer_issuer   "Vergabestelle"                                   conf 0.548
-  category       "IT-Dienstleister"                                conf 0.912
-  location       "Landeshauptstadt München"                        conf 0.881
-  project_name   "Modernisierung der WLAN- und Firewall-…"         conf 0.837
-  deadline       (not extracted — synthetic training dates used a different format)
-  contact_persona (not present in this text)
-  latency: 217ms, 312 tokens
-
-Classification model b1655af3-... on same text:
-  category: ["budget_approved"]   (latency 74ms, 108 tokens)
-```
-
-Both fine-tuned encoders run end-to-end on the live Pioneer API and return structured entities + clue labels for the demo fixture text. The metrics in the eval are limited by (1) the small eval split (3 samples for NER, 20 for classification), (2) the synthetic-date format drift, and (3) the classification eval framework's prediction-format check. Scale `num_examples` from 12 to 200+ in `/generate` and the same pipeline produces production-quality extractors.
-
-### XL E2E run (verified against the real Fastino API on 14 Jun 2026)
-
-Run with `npx tsx scripts/pioneer-xl-train.ts`. Big-data, bigger-small-model version of the previous run:
-
-- **Bigger small models** — all under 32B per the side-challenge cap:
-  - Encoder: `fastino/gliner2-multi-large-v1` (multilingual, larger)
-  - Decoder: `Qwen/Qwen3-8B` (8B params, SFT)
-- **Way more training data** — 550 synthetic examples across 10 parallel `/generate` calls:
-  - 6 NER calls × 25 examples = 150 examples (each call gets its own `bidderly-tender-ner-xl-partN` dataset to avoid concurrent-write dedup)
-  - 2 classification calls × 100 examples = 200 examples
-  - 2 decoder calls × 100 examples = 200 examples
-- **Way more varied label vocabulary** — 18 entity labels + 20 clue labels covering the broad tender-offer surface:
-
-| Domain | Entity labels | Clue labels |
-| --- | --- | --- |
-| Core | buyer_issuer, project_name, category, location, deadline, budget_value, contact_persona | budget_approved, supplier_call, pre_announcement, official_tender, deadline_near, login_required, event_notice, duplicate, expired |
-| Mechanics | reference_number, cpv_code, procedure_type, contract_duration, delivery_location, submission_language | framework_agreement, open_procedure, restricted_procedure, negotiated_procedure, competitive_dialogue |
-| Document | (entities only) | amendment, corrigendum, clarification_deadline |
-| Contact | contact_email, contact_phone | (no new clues) |
-| Submission | scope_description, eligibility_requirements, evaluation_criteria | consortium_allowed, lots, electronic_submission |
-
-Result table (all live, all deployed):
-
-| Task | Base model | Dataset | Examples | Epochs | LoRA | Job id | Wall time |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| NER | `fastino/gliner2-multi-large-v1` | `bidderly-tender-ner-xl-part3` v1 | 25 | 5 | yes | `48e49f7b-…a4818` | ~80 s |
-| Classification | `fastino/gliner2-multi-large-v1` | `bidderly-tender-clues-xl-part1` v1 | 100 | 5 | yes | `29a85fde-…8f62302` | ~65 s |
-| Decoder (SFT) | `Qwen/Qwen3-8B` | `bidderly-tender-scoring-xl-part1` v1 | 100 | 3 | yes | `bdf05e86-…7cfd984e9` | ~165 s |
-
-Total wall time: ~8 minutes for 10 generation jobs + 3 training jobs + 3 evaluations.
-
-**Live inference smoke test** (against a BSI federal procurement text):
-
-```text
-NER model 48e49f7b-…a4818 (gliner2-multi-large):
-  reference_number         "BSI-2024-IT-001"                                conf 0.999
-  cpv_code                 "30200000"                                       conf 0.993
-  procedure_type           "offenen Verfahren"                              conf 0.964
-  contract_duration        "24 Monaten"                                     conf 0.997
-  delivery_location        "Bonn"                                           conf 0.995
-  contact_email            "michael.hoffmann@bsi.bund.de"                   conf 1.000
-  contact_phone            "+49 228 99399 0"                                conf 1.000
-  contact_persona          "Dr. Michael Hoffmann"                           conf 0.937
-  budget_value             "1.800.000 EUR"                                  conf 0.998
-  location                 "Bonn"                                           conf 0.760
-  eligibility_requirements "Eine Bietergemeinschaft ist zugelassen"        conf 0.565
-  category                 "IT-Hardware"                                    conf 0.689
-  project_name             "IT-Hardware"                                    conf 0.461
-  evaluation_criteria      "Teilnahmewettbewerb"                            conf 0.562
-  submission_language      "MEZ"                                            conf 0.662
-  (deadline, buyer_issuer, scope_description: not extracted — synthetic-date drift on the deadline, BSI mention was implicit)
-  latency: ~270ms, ~500 tokens
-
-Classification model 29a85fde-…8f62302 (gliner2-multi-large):
-  category: ["open_procedure", "consortium_allowed"]  ← both correct vs the input text
-  latency: ~200ms
-
-Decoder model bdf05e86-…7cfd984e9 (Qwen3-8B SFT):
-  {
-    "worthOutreachScore": 85,
-    "urgency": "medium",
-    "route": "qualify",
-    "rationale": "The tender for IT hardware procurement by BSI with a EUR 1.8M budget is a significant opportunity. The deadline is in February 2026, which provides ample time for preparation. Since it's an open procedure and consortiums are allowed, it's a good candidate for qualification. The score reflects the potential value and the need for proactive engagement."
-  }
-```
-
-The bigger NER model extracts 14/18 entity types with high confidence (up from 6/7 in the previous run) and 13 of those are from the new vocabulary the old fixtures didn't include. The Qwen3-8B decoder produces strict-JSON output matching the cascade's expected schema — a 4x improvement over the 1.7B model which was producing prose.
-
-The trained model ids are pinned in this README; drop them into `PIONEER_GLINER2_MODEL` and `PIONEER_GEMMA4_MODEL` (or the cascade routing endpoint) to put them in front of the live cascade.
-
-## Demo Script
-
-1. Open `http://localhost:3000`.
-2. Confirm the dashboard shows watched German/EU sources.
-3. Click `Run scout`.
-4. Point out six raw findings from portals, council pages, Tavily-style enrichment, and curated demo data.
-5. Open the Munich or EU finding.
-6. Show GLiNER2 extracted buyer, project, deadline, budget, and clue tags.
-7. Show Gemma 4 score, urgency, route, and rationale.
-8. Show low-score duplicate/irrelevant findings routed to `ignore` without an alert.
-9. Show Gemini analysis only on high-value or human-review findings.
-10. Show the foreground approval alert.
-11. Click `Approve` or `Request info`.
-12. Show the activity timeline and pending decisions updating locally.
-
-## Verification Checklist
-
-- Synthetic GLiNER examples include entity spans and clue labels.
-- GLiNER extraction fixtures produce structured entities for every finding.
-- Gemma scoring fixtures include score, urgency, route, and rationale.
-- Gemini fixtures pass the cascade gate in `validateCascadeGate()`.
-- Low-score findings route to `ignore` and do not create approval alerts.
-- High-value findings become opportunities.
-- Approval requests render on web and in the SwiftUI companion scaffold.
-- Foreground alert appears only for pending approval requests.
-- README documents model cascade, Pioneer usage, Railway setup, Cloudflare DNS, environment variables, partner tech, and demo script.
-
-## Known Scope Boundaries
-
-- The repository uses fixtures by default; real scraping is intentionally limited to safe watchlisted pages and Tavily-backed enrichment.
-- Postgres persistence is represented by schema and adapter-ready types, not a live DB client.
-- Clerk auth is documented and UI-ready, but local demo mode does not require Clerk keys.
-- iOS locked-screen push is out of scope; foreground alert is the demo target.
-
-## Project Files
-
-- [src/components/radar-dashboard.tsx](src/components/radar-dashboard.tsx): interactive dashboard.
-- [src/lib/demo-data.ts](src/lib/demo-data.ts): fixtures and synthetic training examples.
-- [src/lib/cascade.ts](src/lib/cascade.ts): cascade gate and routing helpers.
-- [docs/postgres-schema.sql](docs/postgres-schema.sql): production persistence schema.
-- [ios/BidderlyRadarDemo](ios/BidderlyRadarDemo): SwiftUI companion scaffold.
+| File | Role |
+| --- | --- |
+| `src/lib/live-pipeline.ts` | Scout orchestration (scraper → Tavily → cascade) |
+| `src/lib/provider-clients.ts` | Tavily, Pioneer, and Gemini adapters |
+| `src/lib/demo-data.ts` | Fixtures and synthetic training examples |
+| `src/lib/cascade.ts` | Gemini gate and routing helpers |
+| `src/lib/negotiation.ts` | Negotiation engine |
+| `src/lib/pioneer/` | Pioneer API client, training, inference, schemas |
+| `src/lib/scraper/` | Host-allow-listed HTML fetcher and parser |
+| `src/proxy.ts` | Clerk middleware (protects scout-run and approvals reset) |
+| `backend/src/server.ts` | Realtime Socket.IO + WebSocket server |
