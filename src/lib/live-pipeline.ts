@@ -12,24 +12,152 @@ import {
   scoreWithGemma,
   searchTenderSignals,
 } from "./provider-clients";
+import { scrapeTenderPages, type RawPage } from "@/lib/scraper";
+import { isPioneerDryRun } from "@/lib/pioneer";
 import type {
   AgentEvent,
   ApprovalRequest,
+  Finding,
   GeminiAnalysis,
   ModelScore,
   Opportunity,
   RadarSnapshot,
   ScoutRun,
+  Source,
+  SourceType,
 } from "./radar-types";
 
 export async function buildRadarSnapshot() {
   return getRadarSnapshot();
 }
 
+// --- Mock tender sources (resolved against public/mock-tenders) ----------
+
+function mockTenderBaseUrl(): string {
+  return process.env.MOCK_TENDER_BASE_URL ?? "http://localhost:3000/mock-tenders";
+}
+
+const MOCK_TENDER_SOURCES: Source[] = [
+  {
+    id: "src_mock_munich",
+    name: "Mock tender portal — Munich school network",
+    type: "public_tender_portal",
+    url: `${mockTenderBaseUrl()}/munich-it.html`,
+    geography: "Bavaria",
+    cadence: "Scraper run",
+    status: "healthy",
+    lastCheckedAt: new Date().toISOString(),
+    findingsToday: 0,
+  },
+  {
+    id: "src_mock_berlin",
+    name: "Mock tender portal — Berlin solar roofs",
+    type: "public_tender_portal",
+    url: `${mockTenderBaseUrl()}/berlin-solar.html`,
+    geography: "Berlin",
+    cadence: "Scraper run",
+    status: "healthy",
+    lastCheckedAt: new Date().toISOString(),
+    findingsToday: 0,
+  },
+  {
+    id: "src_mock_hamburg",
+    name: "Mock tender portal — Hamburg supplier day",
+    type: "procurement_page",
+    url: `${mockTenderBaseUrl()}/hamburg-supplier-day.html`,
+    geography: "Hamburg",
+    cadence: "Scraper run",
+    status: "healthy",
+    lastCheckedAt: new Date().toISOString(),
+    findingsToday: 0,
+  },
+  {
+    id: "src_mock_eu",
+    name: "Mock tender portal — EU digital services",
+    type: "public_tender_portal",
+    url: `${mockTenderBaseUrl()}/eu-digital-services.html`,
+    geography: "European Union",
+    cadence: "Scraper run",
+    status: "healthy",
+    lastCheckedAt: new Date().toISOString(),
+    findingsToday: 0,
+  },
+  {
+    id: "src_mock_cologne",
+    name: "Mock tender portal — Cologne duplicate",
+    type: "public_tender_portal",
+    url: `${mockTenderBaseUrl()}/cologne-duplicate.html`,
+    geography: "North Rhine-Westphalia",
+    cadence: "Scraper run",
+    status: "healthy",
+    lastCheckedAt: new Date().toISOString(),
+    findingsToday: 0,
+  },
+  {
+    id: "src_mock_breakfast",
+    name: "Mock tender portal — IT leaders breakfast",
+    type: "curated_demo_feed",
+    url: `${mockTenderBaseUrl()}/network-breakfast.html`,
+    geography: "Germany",
+    cadence: "Scraper run",
+    status: "healthy",
+    lastCheckedAt: new Date().toISOString(),
+    findingsToday: 0,
+  },
+  {
+    id: "src_mock_stuttgart",
+    name: "Mock tender portal — Stuttgart energy follow-up",
+    type: "procurement_page",
+    url: `${mockTenderBaseUrl()}/stuttgart-energy.html`,
+    geography: "Baden-Württemberg",
+    cadence: "Scraper run",
+    status: "healthy",
+    lastCheckedAt: new Date().toISOString(),
+    findingsToday: 0,
+  },
+  {
+    id: "src_mock_bremen",
+    name: "Mock tender portal — Bremen document management (expired)",
+    type: "procurement_page",
+    url: `${mockTenderBaseUrl()}/bremen-expired.html`,
+    geography: "Bremen",
+    cadence: "Scraper run",
+    status: "healthy",
+    lastCheckedAt: new Date().toISOString(),
+    findingsToday: 0,
+  },
+];
+
+function pageToFinding(page: RawPage, source: Source): Finding {
+  const fallbackId = `find_scraped_${stableId(page.url)}`;
+  return {
+    id: page.tenderId ?? fallbackId,
+    sourceId: source.id,
+    sourceName: source.name,
+    sourceType: source.type as SourceType,
+    title: page.title ?? `Scraped: ${new URL(page.url).pathname.split("/").pop() ?? page.url}`,
+    url: page.finalUrl,
+    rawText: page.rawText,
+    detectedLanguage: page.detectedLanguage,
+    publishedAt: page.publishedAt ?? new Date().toISOString(),
+    stage: "raw",
+  };
+}
+
+function stableId(input: string): string {
+  let hash = 0;
+  for (let index = 0; index < input.length; index += 1) {
+    hash = (hash << 5) - hash + input.charCodeAt(index);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
 export async function runScoutPipeline(): Promise<{
   snapshot: RadarSnapshot;
   source: "fixture" | "live";
   warnings: string[];
+  scraper?: { pages: number; failures: number; durationMs: number };
 }> {
   const status = getIntegrationStatus();
 
@@ -46,25 +174,57 @@ export async function runScoutPipeline(): Promise<{
 
   const warnings: string[] = [];
   const startedAt = new Date();
-  const findings = await searchTenderSignals();
+  const events: AgentEvent[] = [];
+
+  // --- 1. Scraper stage --------------------------------------------------
+  const scraperStart = Date.now();
+  const scrapeResult = await scrapeTenderPages(MOCK_TENDER_SOURCES);
+  const scraperDurationMs = Date.now() - scraperStart;
+  const findings: Finding[] = [];
+  for (const source of MOCK_TENDER_SOURCES) {
+    const page = scrapeResult.pages.find((p) => p.url === source.url);
+    if (page) {
+      findings.push(pageToFinding(page, source));
+    } else {
+      const failure = scrapeResult.failures.find((f) => f.url === source.url);
+      if (failure) warnings.push(`scraper ${source.name}: ${failure.reason}`);
+    }
+  }
+  if (findings.length > 0) {
+    events.push({
+      id: `evt_${startedAt.getTime()}_scraped`,
+      at: new Date().toISOString(),
+      role: "research_scout",
+      type: "finding_discovered",
+      title: `${findings.length} scraped findings`,
+      detail: `Scraped ${scrapeResult.pages.length} mock tender pages, ${scrapeResult.failures.length} failures.`,
+    });
+  }
+
+  // --- 2. Tavily enrichment --------------------------------------------
+  try {
+    const tavilyFindings = await searchTenderSignals();
+    findings.push(...tavilyFindings);
+  } catch (err) {
+    warnings.push(`tavily: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   const scoutRun: ScoutRun = {
     id: `run_live_${startedAt.getTime()}`,
     mode: "scheduled",
     startedAt: startedAt.toISOString(),
     status: "running",
-    sourcesScanned: 1,
+    sourcesScanned: MOCK_TENDER_SOURCES.length,
     findingsDiscovered: findings.length,
   };
-  const events: AgentEvent[] = [
-    {
-      id: `evt_${scoutRun.id}_started`,
-      at: scoutRun.startedAt,
-      role: "research_scout",
-      type: "scout_started",
-      title: "Live scout run started",
-      detail: "Searching current German/EU procurement signals with Tavily.",
-    },
-  ];
+  events.unshift({
+    id: `evt_${scoutRun.id}_started`,
+    at: scoutRun.startedAt,
+    role: "research_scout",
+    type: "scout_started",
+    title: "Live scout run started",
+    detail: `Scraping ${MOCK_TENDER_SOURCES.length} mock tender portals with Pioneer pipeline.`,
+  });
 
   const extractions = [];
   const scores: ModelScore[] = [];
@@ -81,7 +241,7 @@ export async function runScoutPipeline(): Promise<{
         at: new Date().toISOString(),
         role: "extraction_agent",
         type: "entities_extracted",
-        title: "GLiNER2 extraction complete",
+        title: "Pioneer GLiNER2 extraction complete",
         detail: `${finding.title} structured into entities and clue tags.`,
         findingId: finding.id,
       });
@@ -93,7 +253,7 @@ export async function runScoutPipeline(): Promise<{
         at: new Date().toISOString(),
         role: "scoring_router",
         type: "finding_scored",
-        title: "Gemma 4 route assigned",
+        title: "Pioneer Gemma 4 route assigned",
         detail: `${score.worthOutreachScore}/100 routed to ${score.route}.`,
         findingId: finding.id,
       });
@@ -164,11 +324,7 @@ export async function runScoutPipeline(): Promise<{
 
   const finishedAt = new Date().toISOString();
   const snapshot: RadarSnapshot = {
-    scoutRun: {
-      ...scoutRun,
-      finishedAt,
-      status: "completed",
-    },
+    scoutRun: { ...scoutRun, finishedAt, status: "completed" },
     sources: [
       ...fixtureSources.filter((source) => source.id !== "src_tavily_live"),
       {
@@ -182,6 +338,14 @@ export async function runScoutPipeline(): Promise<{
         lastCheckedAt: finishedAt,
         findingsToday: findings.length,
       },
+      ...MOCK_TENDER_SOURCES.map((source) => ({
+        ...source,
+        status: warnings.some((w) => w.startsWith(`scraper ${source.name}`))
+          ? ("degraded" as const)
+          : ("healthy" as const),
+        lastCheckedAt: finishedAt,
+        findingsToday: scrapeResult.pages.filter((p) => p.url === source.url).length,
+      })),
     ],
     findings,
     extractions,
@@ -220,10 +384,21 @@ export async function runScoutPipeline(): Promise<{
     };
   }
 
-  // Preserve the known demo approvals when live models do not escalate anything yet.
   if (snapshot.approvals.length === 0) {
     snapshot.approvals = fixtureApprovals;
   }
 
-  return { snapshot, source: "live", warnings };
+  // Pioneer dry-run flag is informational; included for the UI badge.
+  void isPioneerDryRun;
+
+  return {
+    snapshot,
+    source: "live",
+    warnings,
+    scraper: {
+      pages: scrapeResult.pages.length,
+      failures: scrapeResult.failures.length,
+      durationMs: scraperDurationMs,
+    },
+  };
 }

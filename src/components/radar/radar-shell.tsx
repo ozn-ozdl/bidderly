@@ -18,6 +18,7 @@ import { RadarView } from "./views/radar-view";
 import { PipelineView } from "./views/pipeline-view";
 import { ApprovalsView } from "./views/approvals-view";
 import { InsightsView } from "@/components/insights/insights-view";
+import { PioneerView } from "./views/pioneer-view";
 import { FindingDrawer } from "./finding-drawer";
 import { ApprovalToast } from "./approval-toast";
 
@@ -249,6 +250,8 @@ export function RadarShell({ initialSnapshot, integrationStatus }: RadarShellPro
             ) : null}
 
             {activeView === "insights" ? <InsightsView snapshot={snapshot} /> : null}
+
+            {activeView === "pioneer" ? <PioneerView /> : null}
 
             {activeView === "approvals" ? (
               <ApprovalsView
